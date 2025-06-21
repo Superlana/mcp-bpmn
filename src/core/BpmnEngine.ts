@@ -2,19 +2,7 @@ import { JSDOM } from 'jsdom';
 import { ProcessContext, ElementDefinition } from '../types/index.js';
 import { IdGenerator } from '../utils/IdGenerator.js';
 import { ElementFactory } from './ElementFactory.js';
-
-// Dynamic import to handle module resolution issues
-async function getBpmnModeler() {
-  try {
-    // Try to import from the package root
-    const pkg = await import('bpmn-js');
-    return pkg.default || pkg;
-  } catch {
-    // Fallback to direct file import
-    const mod = await import('bpmn-js/lib/Modeler.js');
-    return mod.default || mod;
-  }
-}
+import { createModeler } from '../lib/bpmn-wrapper.js';
 
 export class BpmnEngine {
   private processes: Map<string, ProcessContext> = new Map();
@@ -32,12 +20,22 @@ export class BpmnEngine {
     Object.defineProperty(globalThis, 'window', { value: window, writable: true });
     Object.defineProperty(globalThis, 'document', { value: window.document, writable: true });
     Object.defineProperty(globalThis, 'navigator', { value: window.navigator, writable: true });
+    
+    // Add CSS constructor for bpmn-js
+    if (!globalThis.CSS) {
+      Object.defineProperty(globalThis, 'CSS', { 
+        value: {
+          supports: () => false,
+          escape: (str: string) => str
+        },
+        writable: true 
+      });
+    }
 
     const container = window.document.getElementById('canvas');
     
     // Create modeler instance
-    const BpmnModeler = await getBpmnModeler();
-    const modeler = new BpmnModeler({
+    const modeler = await createModeler({
       container,
       keyboard: { bindTo: window }
     });
@@ -198,10 +196,20 @@ export class BpmnEngine {
     Object.defineProperty(globalThis, 'window', { value: window, writable: true });
     Object.defineProperty(globalThis, 'document', { value: window.document, writable: true });
     Object.defineProperty(globalThis, 'navigator', { value: window.navigator, writable: true });
+    
+    // Add CSS constructor for bpmn-js
+    if (!globalThis.CSS) {
+      Object.defineProperty(globalThis, 'CSS', { 
+        value: {
+          supports: () => false,
+          escape: (str: string) => str
+        },
+        writable: true 
+      });
+    }
 
     const container = window.document.getElementById('canvas');
-    const BpmnModeler = await getBpmnModeler();
-    const modeler = new BpmnModeler({ container });
+    const modeler = await createModeler({ container });
 
     try {
       await modeler.importXML(xml);

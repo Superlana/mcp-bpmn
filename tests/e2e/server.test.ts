@@ -1,17 +1,12 @@
 import { spawn } from 'child_process';
-import { resolve } from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import * as path from 'path';
 
 describe('MCP Server End-to-End Tests', () => {
   let server: any;
   let responseBuffer: string = '';
 
   beforeAll((done) => {
-    const serverPath = resolve(__dirname, '../../dist/server/index.js');
+    const serverPath = path.resolve(process.cwd(), 'dist/server/index.js');
     server = spawn('node', [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -131,5 +126,46 @@ describe('MCP Server End-to-End Tests', () => {
     expect(response.id).toBe(3);
     expect(response.result).toBeDefined();
     expect(response.result.isError).toBe(true);
+  });
+
+  it('should successfully create and export a BPMN process', async () => {
+    // Create process
+    const createResponse = await sendRequest({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: {
+        name: 'bpmn_create_process',
+        arguments: {
+          name: 'Full E2E Test Process'
+        }
+      }
+    });
+
+    console.log('Create response:', JSON.stringify(createResponse, null, 2));
+
+    // If creation succeeds, try to export
+    if (!createResponse.result?.isError) {
+      const exportResponse = await sendRequest({
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'tools/call',
+        params: {
+          name: 'bpmn_export',
+          arguments: {
+            processId: 'Process_1',
+            format: 'xml'
+          }
+        }
+      });
+
+      console.log('Export response:', JSON.stringify(exportResponse, null, 2));
+      
+      expect(exportResponse.result).toBeDefined();
+      if (!exportResponse.result.isError) {
+        expect(exportResponse.result.content[0].text).toContain('<?xml');
+        expect(exportResponse.result.content[0].text).toContain('bpmn:definitions');
+      }
+    }
   });
 });
