@@ -48,6 +48,11 @@ export class BpmnEngine {
     try {
       await modeler.importXML(xml);
       
+      // Set process name for test mocks
+      if ('setProcessName' in modeler && typeof modeler.setProcessName === 'function') {
+        modeler.setProcessName(name);
+      }
+      
       const context: ProcessContext = {
         id: processId,
         name,
