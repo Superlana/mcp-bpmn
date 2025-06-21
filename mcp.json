@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mcp-bpmn": {
+      "command": "node",
+      "args": ["dist/server/index.js"],
+      "env": {}
+    }
+  }
+}

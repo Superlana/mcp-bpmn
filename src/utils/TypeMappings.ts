@@ -1,0 +1,112 @@
+import { EventType, EventDefinitionType, ActivityType, GatewayType } from '../types/index.js';
+
+export class TypeMappings {
+  /**
+   * Map event type and definition to BPMN element type
+   */
+  static mapEventType(eventType: EventType, _eventDefinition?: EventDefinitionType): string {
+    const baseTypes: Record<EventType, string> = {
+      'start': 'bpmn:StartEvent',
+      'end': 'bpmn:EndEvent',
+      'intermediate-throw': 'bpmn:IntermediateThrowEvent',
+      'intermediate-catch': 'bpmn:IntermediateCatchEvent',
+      'boundary': 'bpmn:BoundaryEvent'
+    };
+
+    // Currently just returning base type, but eventDefinition can be used
+    // for future enhancements like specialized event types
+    return baseTypes[eventType];
+  }
+
+  /**
+   * Map activity type to BPMN element type
+   */
+  static mapActivityType(activityType: ActivityType): string {
+    const activityMap: Record<ActivityType, string> = {
+      'task': 'bpmn:Task',
+      'userTask': 'bpmn:UserTask',
+      'serviceTask': 'bpmn:ServiceTask',
+      'scriptTask': 'bpmn:ScriptTask',
+      'businessRuleTask': 'bpmn:BusinessRuleTask',
+      'manualTask': 'bpmn:ManualTask',
+      'receiveTask': 'bpmn:ReceiveTask',
+      'sendTask': 'bpmn:SendTask',
+      'subProcess': 'bpmn:SubProcess',
+      'callActivity': 'bpmn:CallActivity'
+    };
+
+    return activityMap[activityType];
+  }
+
+  /**
+   * Map gateway type to BPMN element type
+   */
+  static mapGatewayType(gatewayType: GatewayType): string {
+    const gatewayMap: Record<GatewayType, string> = {
+      'exclusive': 'bpmn:ExclusiveGateway',
+      'parallel': 'bpmn:ParallelGateway',
+      'inclusive': 'bpmn:InclusiveGateway',
+      'eventBased': 'bpmn:EventBasedGateway',
+      'complex': 'bpmn:ComplexGateway'
+    };
+
+    return gatewayMap[gatewayType];
+  }
+
+  /**
+   * Create event definition based on type
+   */
+  static createEventDefinition(type?: EventDefinitionType): any {
+    if (!type) return undefined;
+
+    const definitionMap: Record<EventDefinitionType, string> = {
+      'message': 'bpmn:MessageEventDefinition',
+      'timer': 'bpmn:TimerEventDefinition',
+      'error': 'bpmn:ErrorEventDefinition',
+      'signal': 'bpmn:SignalEventDefinition',
+      'conditional': 'bpmn:ConditionalEventDefinition',
+      'escalation': 'bpmn:EscalationEventDefinition',
+      'compensation': 'bpmn:CompensateEventDefinition',
+      'cancel': 'bpmn:CancelEventDefinition',
+      'terminate': 'bpmn:TerminateEventDefinition'
+    };
+
+    return {
+      $type: definitionMap[type]
+    };
+  }
+
+  /**
+   * Check if elements can be connected
+   */
+  static canConnect(sourceType: string, targetType: string): boolean {
+    // Simplified rules - can be expanded
+    const invalidConnections = [
+      ['bpmn:EndEvent', '*'],
+      ['*', 'bpmn:StartEvent'],
+      ['bpmn:BoundaryEvent', 'bpmn:BoundaryEvent']
+    ];
+
+    for (const [source, target] of invalidConnections) {
+      if ((source === '*' || source === sourceType) &&
+          (target === '*' || target === targetType)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Determine connection type based on source and target
+   */
+  static getConnectionType(sourceType: string, targetType: string): string {
+    // Message flows between pools
+    if (sourceType === 'bpmn:Participant' || targetType === 'bpmn:Participant') {
+      return 'bpmn:MessageFlow';
+    }
+
+    // Default to sequence flow
+    return 'bpmn:SequenceFlow';
+  }
+}
