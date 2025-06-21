@@ -23,6 +23,14 @@ export class AutoLayout {
     
     // Apply horizontal layout
     this.applyHorizontalLayout(flowGraph);
+    
+    // Update the process elements with new positions
+    flowGraph.forEach((node, id) => {
+      const element = process.elements.get(id);
+      if (element && node.position) {
+        element.position = node.position;
+      }
+    });
   }
 
   /**
@@ -91,32 +99,54 @@ export class AutoLayout {
 
       if (currentLevelElements.length === 0) break;
 
-      // Find next level elements
-      const nextLevelElements = new Set<any>();
+      // Find next level elements and group by source
+      const nextLevelBySource = new Map<string, any[]>();
       
       currentLevelElements.forEach(element => {
         element.outgoing.forEach((targetId: string) => {
           const target = graph.get(targetId);
           if (target && !target.positioned) {
             target.level = currentLevel + 1;
-            nextLevelElements.add(target);
+            
+            // Group by source for branch handling
+            if (!nextLevelBySource.has(element.id)) {
+              nextLevelBySource.set(element.id, []);
+            }
+            nextLevelBySource.get(element.id)!.push(target);
           }
         });
       });
 
-      // Position next level elements
-      if (nextLevelElements.size > 0) {
-        const nextX = currentX + this.SPACING.HORIZONTAL;
-        let nextY = this.SPACING.START_Y;
+      // Position next level elements with branch awareness
+      const nextX = currentX + this.SPACING.HORIZONTAL;
+      let globalY = this.SPACING.START_Y;
 
-        Array.from(nextLevelElements).forEach((element, index) => {
-          element.position = {
-            x: nextX,
-            y: nextY + (index * this.SPACING.VERTICAL)
-          };
-          element.positioned = true;
-        });
-      }
+      nextLevelBySource.forEach((targets, sourceId) => {
+        const source = graph.get(sourceId);
+        
+        // If source is a gateway with multiple outputs, spread them vertically
+        if (source && this.isGateway(source.type) && targets.length > 1) {
+          const centerY = source.position.y;
+          targets.forEach((target, index) => {
+            const offset = (index - (targets.length - 1) / 2) * this.SPACING.VERTICAL * 0.8;
+            target.position = {
+              x: nextX,
+              y: centerY + offset
+            };
+            target.positioned = true;
+          });
+        } else {
+          // Non-gateway or single output: maintain Y position
+          targets.forEach(target => {
+            target.position = {
+              x: nextX,
+              y: source?.position?.y || globalY
+            };
+            target.positioned = true;
+            globalY += this.SPACING.VERTICAL;
+          });
+        }
+      });
 
       processedLevels.add(currentLevel);
       currentLevel++;
@@ -155,6 +185,13 @@ export class AutoLayout {
       x: sourceElement.position.x + this.SPACING.HORIZONTAL,
       y: sourceElement.position.y
     };
+  }
+
+  /**
+   * Check if element type is a gateway
+   */
+  private static isGateway(type: string): boolean {
+    return type.includes('Gateway');
   }
 
   /**
