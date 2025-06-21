@@ -1,7 +1,6 @@
 import { ProcessContext, ElementDefinition } from '../types/index.js';
 import { IdGenerator } from '../utils/IdGenerator.js';
 import { config } from '../config/index.js';
-import { AutoLayout } from '../utils/AutoLayout.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
@@ -94,10 +93,15 @@ export class SimpleBpmnEngine {
     const process = this.getProcess(processId);
     const elementId = IdGenerator.generate(elementDef.type.split(':')[1]);
     
-    // Calculate smart position if not provided
+    // Use provided position or default
     let position = elementDef.position;
     if (!position) {
-      position = AutoLayout.calculateSmartPosition(process, elementDef.connectFrom);
+      // Calculate default position based on existing elements
+      const elementCount = process.elements.size;
+      position = {
+        x: 100 + (elementCount * 50),
+        y: 200
+      };
     }
     
     const element = {
@@ -178,10 +182,25 @@ export class SimpleBpmnEngine {
     connections.forEach(conn => {
       elementXml += `    <bpmn:sequenceFlow id="${conn.id}" sourceRef="${conn.source}" targetRef="${conn.target}"${conn.label ? ` name="${conn.label}"` : ''} />\n`;
       
-      diagramXml += `      <bpmndi:BPMNEdge id="${conn.id}_di" bpmnElement="${conn.id}">
-        <di:waypoint x="150" y="100" />
-        <di:waypoint x="250" y="100" />
+      // Calculate waypoints based on actual element positions
+      const sourceElement = elements.find(e => e.id === conn.source);
+      const targetElement = elements.find(e => e.id === conn.target);
+      
+      if (sourceElement && targetElement) {
+        const sourceSizing = this.getElementSizing(sourceElement.type);
+        const targetSizing = this.getElementSizing(targetElement.type);
+        
+        // Calculate connection points (from center-right of source to center-left of target)
+        const sourceX = (sourceElement.position?.x || 100) + sourceSizing.width;
+        const sourceY = (sourceElement.position?.y || 100) + (sourceSizing.height / 2);
+        const targetX = targetElement.position?.x || 250;
+        const targetY = (targetElement.position?.y || 100) + (targetSizing.height / 2);
+        
+        diagramXml += `      <bpmndi:BPMNEdge id="${conn.id}_di" bpmnElement="${conn.id}">
+        <di:waypoint x="${sourceX}" y="${sourceY}" />
+        <di:waypoint x="${targetX}" y="${targetY}" />
       </bpmndi:BPMNEdge>\n`;
+      }
     });
 
     return `<?xml version="1.0" encoding="UTF-8"?>

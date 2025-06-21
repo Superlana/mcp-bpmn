@@ -104,14 +104,13 @@ export class BpmnRequestHandler {
   }
 
   private async addEvent(args: any): Promise<CallToolResult> {
-    const { processId, eventType, name, eventDefinition, position, connectFrom, attachTo } = args;
+    const { processId, eventType, name, eventDefinition, position, attachTo } = args;
     
     const bpmnType = TypeMappings.mapEventType(eventType, eventDefinition);
     const elementDef = {
       type: bpmnType,
       name,
       position,
-      connectFrom,
       properties: {
         eventDefinition,
         attachTo
@@ -120,73 +119,56 @@ export class BpmnRequestHandler {
 
     const element = await this.engine.createElement(processId, elementDef);
 
-    // If connectFrom is specified, create a connection
-    if (connectFrom) {
-      await this.engine.connect(processId, connectFrom, element.id);
-    }
-
     return {
       content: [
         {
           type: 'text',
-          text: `Added ${eventType} event "${name || 'Unnamed'}" with ID: ${element.id}${connectFrom ? ` connected from ${connectFrom}` : ''}`
+          text: `Added ${eventType} event "${name || 'Unnamed'}" with ID: ${element.id}`
         }
       ]
     };
   }
 
   private async addActivity(args: any): Promise<CallToolResult> {
-    const { processId, activityType, name, position, connectFrom, properties = {} } = args;
+    const { processId, activityType, name, position, properties = {} } = args;
     
     const bpmnType = TypeMappings.mapActivityType(activityType);
     const elementDef = {
       type: bpmnType,
       name,
       position,
-      connectFrom,
       properties
     };
 
     const element = await this.engine.createElement(processId, elementDef);
 
-    // If connectFrom is specified, create a connection
-    if (connectFrom) {
-      await this.engine.connect(processId, connectFrom, element.id);
-    }
-
     return {
       content: [
         {
           type: 'text',
-          text: `Added ${activityType} "${name}" with ID: ${element.id}${connectFrom ? ` connected from ${connectFrom}` : ''}`
+          text: `Added ${activityType} "${name}" with ID: ${element.id}`
         }
       ]
     };
   }
 
   private async addGateway(args: any): Promise<CallToolResult> {
-    const { processId, gatewayType, name, position, connectFrom } = args;
+    const { processId, gatewayType, name, position } = args;
     
     const bpmnType = TypeMappings.mapGatewayType(gatewayType);
     const elementDef = {
       type: bpmnType,
       name,
-      position,
-      connectFrom
+      position
     };
 
     const element = await this.engine.createElement(processId, elementDef);
-
-    // If connectFrom is specified, create a connection
-    if (connectFrom) {
-      await this.engine.connect(processId, connectFrom, element.id);
-    }
 
     return {
       content: [
         {
           type: 'text',
-          text: `Added ${gatewayType} gateway "${name || 'Gateway'}" with ID: ${element.id}${connectFrom ? ` connected from ${connectFrom}` : ''}`
+          text: `Added ${gatewayType} gateway "${name || 'Gateway'}" with ID: ${element.id}`
         }
       ]
     };

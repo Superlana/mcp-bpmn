@@ -164,26 +164,16 @@ export class AutoLayout {
   }
 
   /**
-   * Calculate smart position for new element based on connectFrom
+   * Calculate smart position for new element
    */
   static calculateSmartPosition(
-    process: ProcessContext, 
-    connectFrom?: string
+    process: ProcessContext
   ): { x: number, y: number } {
-    if (!connectFrom) {
-      // Default position if no connection
-      return { x: this.SPACING.START_X, y: this.SPACING.START_Y };
-    }
-
-    const sourceElement = process.elements.get(connectFrom);
-    if (!sourceElement || !sourceElement.position) {
-      return { x: this.SPACING.START_X, y: this.SPACING.START_Y };
-    }
-
-    // Place new element to the right of source
-    return {
-      x: sourceElement.position.x + this.SPACING.HORIZONTAL,
-      y: sourceElement.position.y
+    // Default position based on existing elements
+    const elementCount = process.elements.size;
+    return { 
+      x: this.SPACING.START_X + (elementCount * 50), 
+      y: this.SPACING.START_Y 
     };
   }
 

@@ -72,10 +72,6 @@ export const tools: Tool[] = [
           },
           description: 'Position of the event (optional)'
         },
-        connectFrom: {
-          type: 'string',
-          description: 'ID of element to connect from (optional)'
-        },
         attachTo: {
           type: 'string',
           description: 'ID of activity to attach to (for boundary events)'
@@ -110,10 +106,6 @@ export const tools: Tool[] = [
             y: { type: 'number' }
           },
           description: 'Position of the activity (optional)'
-        },
-        connectFrom: {
-          type: 'string',
-          description: 'ID of element to connect from (optional)'
         },
         properties: {
           type: 'object',
