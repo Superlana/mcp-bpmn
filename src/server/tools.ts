@@ -374,5 +374,49 @@ export const tools: Tool[] = [
       },
       required: ['processId', 'elementId']
     }
+  },
+  {
+    name: 'bpmn_list_diagrams',
+    description: 'List all saved BPMN diagrams',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'bpmn_load_diagram',
+    description: 'Load a saved BPMN diagram',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Filename of the diagram to load'
+        }
+      },
+      required: ['filename']
+    }
+  },
+  {
+    name: 'bpmn_delete_diagram',
+    description: 'Delete a saved BPMN diagram file',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Filename of the diagram to delete'
+        }
+      },
+      required: ['filename']
+    }
+  },
+  {
+    name: 'bpmn_get_diagrams_path',
+    description: 'Get the path where BPMN diagrams are saved',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
   }
 ];

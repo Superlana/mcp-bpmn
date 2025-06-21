@@ -1,120 +1,63 @@
-import { JSDOM } from 'jsdom';
 import { ProcessContext, ElementDefinition } from '../types/index.js';
-import { IdGenerator } from '../utils/IdGenerator.js';
-import { ElementFactory } from './ElementFactory.js';
-import { createModeler } from '../lib/bpmn-wrapper.js';
+import { BpmnModdleEngine } from './BpmnModdleEngine.js';
+import { config } from '../config/index.js';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 
+/**
+ * Main BPMN Engine that uses bpmn-moddle for server-side processing
+ * and saves diagrams to the file system
+ */
 export class BpmnEngine {
-  private processes: Map<string, ProcessContext> = new Map();
-  private modelers: Map<string, any> = new Map();
+  private moddleEngine: BpmnModdleEngine;
+  private diagramsPath: string;
+
+  constructor() {
+    this.moddleEngine = new BpmnModdleEngine();
+    this.diagramsPath = config.bpmnDiagramsPath;
+    this.ensureDiagramsDirectory();
+  }
+
+  /**
+   * Ensure the diagrams directory exists
+   */
+  private async ensureDiagramsDirectory(): Promise<void> {
+    try {
+      await fs.mkdir(this.diagramsPath, { recursive: true });
+    } catch (error) {
+      console.error('Failed to create diagrams directory:', error);
+    }
+  }
 
   /**
    * Create a new BPMN process
    */
   async createProcess(name: string, type: 'process' | 'collaboration' = 'process'): Promise<ProcessContext> {
-    const processId = IdGenerator.generate('Process');
-    const dom = new JSDOM('<!DOCTYPE html><div id="canvas"></div>');
-    const window = dom.window as any;
+    const process = await this.moddleEngine.createProcess(name, type);
     
-    // Setup global window and document for bpmn-js
-    Object.defineProperty(globalThis, 'window', { value: window, writable: true });
-    Object.defineProperty(globalThis, 'document', { value: window.document, writable: true });
-    Object.defineProperty(globalThis, 'navigator', { value: window.navigator, writable: true });
+    // Save the initial process
+    await this.saveProcess(process);
     
-    // Add CSS constructor for bpmn-js
-    if (!globalThis.CSS) {
-      Object.defineProperty(globalThis, 'CSS', { 
-        value: {
-          supports: () => false,
-          escape: (str: string) => str
-        },
-        writable: true 
-      });
-    }
-
-    const container = window.document.getElementById('canvas');
-    
-    // Create modeler instance
-    const modeler = await createModeler({
-      container,
-      keyboard: { bindTo: window }
-    });
-
-    // Create initial BPMN XML
-    const xml = this.createInitialXml(processId, name, type);
-    
-    try {
-      await modeler.importXML(xml);
-      
-      // Set process name for test mocks
-      if ('setProcessName' in modeler && typeof modeler.setProcessName === 'function') {
-        modeler.setProcessName(name);
-      }
-      
-      const context: ProcessContext = {
-        id: processId,
-        name,
-        type,
-        elements: new Map(),
-        connections: new Map(),
-        xml
-      };
-
-      this.processes.set(processId, context);
-      this.modelers.set(processId, modeler);
-
-      return context;
-    } catch (error) {
-      throw new Error(`Failed to create process: ${error}`);
-    }
-  }
-
-  /**
-   * Get modeler instance for a process
-   */
-  getModeler(processId: string): any {
-    const modeler = this.modelers.get(processId);
-    if (!modeler) {
-      throw new Error(`Process ${processId} not found`);
-    }
-    return modeler;
+    return process;
   }
 
   /**
    * Get process context
    */
   getProcess(processId: string): ProcessContext {
-    const process = this.processes.get(processId);
-    if (!process) {
-      throw new Error(`Process ${processId} not found`);
-    }
-    return process;
+    return this.moddleEngine.getProcess(processId);
   }
 
   /**
-   * Get element factory for a process
-   */
-  getElementFactory(processId: string): ElementFactory {
-    const modeler = this.getModeler(processId);
-    return new ElementFactory(
-      modeler.get('elementFactory'),
-      modeler.get('modeling'),
-      modeler.get('elementRegistry'),
-      modeler.get('bpmnFactory'),
-      modeler.get('canvas')
-    );
-  }
-
-  /**
-   * Create an element in the process
+   * Create an element
    */
   async createElement(processId: string, elementDef: ElementDefinition): Promise<any> {
-    const factory = this.getElementFactory(processId);
-    const element = await factory.createElement(elementDef);
+    const element = await this.moddleEngine.createElement(processId, elementDef);
     
-    // Update process context
+    // Auto-save after modification
     const process = this.getProcess(processId);
-    process.elements.set(element.id, element);
+    process.xml = await this.moddleEngine.exportXml(processId);
+    await this.saveProcess(process);
     
     return element;
   }
@@ -123,173 +66,152 @@ export class BpmnEngine {
    * Connect two elements
    */
   async connect(processId: string, sourceId: string, targetId: string, label?: string): Promise<any> {
-    const modeler = this.getModeler(processId);
-    const modeling = modeler.get('modeling');
-    const elementRegistry = modeler.get('elementRegistry');
+    const connection = await this.moddleEngine.connect(processId, sourceId, targetId, label);
     
-    const source = elementRegistry.get(sourceId);
-    const target = elementRegistry.get(targetId);
-    
-    if (!source || !target) {
-      throw new Error('Source or target element not found');
-    }
-
-    const connection = modeling.connect(source, target);
-    
-    if (label) {
-      modeling.updateLabel(connection, label);
-    }
-
-    // Update process context
+    // Auto-save after modification
     const process = this.getProcess(processId);
-    process.connections.set(connection.id, {
-      id: connection.id,
-      source: sourceId,
-      target: targetId,
-      type: connection.type,
-      label
-    });
-
+    process.xml = await this.moddleEngine.exportXml(processId);
+    await this.saveProcess(process);
+    
     return connection;
   }
 
   /**
    * Export process as XML
    */
-  async exportXml(processId: string, formatted = true): Promise<string> {
-    const modeler = this.getModeler(processId);
-    
-    try {
-      const result = await modeler.saveXML({ format: formatted });
-      return result.xml;
-    } catch (error) {
-      throw new Error(`Failed to export XML: ${error}`);
-    }
+  async exportXml(processId: string, formatted: boolean = true): Promise<string> {
+    return this.moddleEngine.exportXml(processId, formatted);
   }
 
   /**
-   * Export process as SVG
+   * Export process as SVG (stub for now)
    */
   async exportSvg(processId: string): Promise<string> {
-    const modeler = this.getModeler(processId);
-    
-    try {
-      const result = await modeler.saveSVG();
-      return result.svg;
-    } catch (error) {
-      throw new Error(`Failed to export SVG: ${error}`);
-    }
+    // For Phase 1, we'll return a placeholder message
+    return `<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20">SVG export requires browser environment. Use VS Code BPMN extension to view ${processId}.bpmn</text></svg>`;
   }
 
   /**
-   * Import XML into a process
+   * Import XML
    */
   async importXml(xml: string): Promise<ProcessContext> {
-    // Extract process name from XML (simplified)
-    const nameMatch = xml.match(/name="([^"]+)"/);
-    const name = nameMatch ? nameMatch[1] : 'Imported Process';
+    const process = await this.moddleEngine.importXml(xml);
     
-    const processId = IdGenerator.generate('Process');
-    const dom = new JSDOM('<!DOCTYPE html><div id="canvas"></div>');
-    const window = dom.window as any;
+    // Save the imported process
+    await this.saveProcess(process);
     
-    Object.defineProperty(globalThis, 'window', { value: window, writable: true });
-    Object.defineProperty(globalThis, 'document', { value: window.document, writable: true });
-    Object.defineProperty(globalThis, 'navigator', { value: window.navigator, writable: true });
-    
-    // Add CSS constructor for bpmn-js
-    if (!globalThis.CSS) {
-      Object.defineProperty(globalThis, 'CSS', { 
-        value: {
-          supports: () => false,
-          escape: (str: string) => str
-        },
-        writable: true 
-      });
-    }
-
-    const container = window.document.getElementById('canvas');
-    const modeler = await createModeler({ container });
-
-    try {
-      await modeler.importXML(xml);
-      
-      const context: ProcessContext = {
-        id: processId,
-        name,
-        type: xml.includes('bpmn:collaboration') ? 'collaboration' : 'process',
-        elements: new Map(),
-        connections: new Map(),
-        xml
-      };
-
-      // Populate elements and connections from imported XML
-      const elementRegistry = modeler.get('elementRegistry');
-      elementRegistry.forEach((element: any) => {
-        if (element.type === 'bpmn:SequenceFlow' || element.type === 'bpmn:MessageFlow') {
-          context.connections.set(element.id, {
-            id: element.id,
-            source: element.source.id,
-            target: element.target.id,
-            type: element.type
-          });
-        } else if (element.id && element.type !== 'label') {
-          context.elements.set(element.id, element);
-        }
-      });
-
-      this.processes.set(processId, context);
-      this.modelers.set(processId, modeler);
-
-      return context;
-    } catch (error) {
-      throw new Error(`Failed to import XML: ${error}`);
-    }
+    return process;
   }
 
   /**
-   * Create initial BPMN XML
+   * Save process to file
    */
-  private createInitialXml(processId: string, name: string, type: 'process' | 'collaboration'): string {
-    if (type === 'collaboration') {
-      return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
-  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" 
-  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" 
-  id="Definitions_1" 
-  targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:collaboration id="${processId}" name="${name}">
-  </bpmn:collaboration>
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="${processId}">
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
+  private async saveProcess(process: ProcessContext): Promise<string> {
+    const filename = `${process.id}_${this.sanitizeFilename(process.name)}.bpmn`;
+    const filepath = join(this.diagramsPath, filename);
+    
+    // Ensure we have the latest XML
+    if (!process.xml || process.xml.trim() === '') {
+      process.xml = await this.moddleEngine.exportXml(process.id);
     }
-
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
-  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" 
-  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" 
-  id="Definitions_1" 
-  targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="${processId}" name="${name}" isExecutable="true">
-  </bpmn:process>
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="${processId}">
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
+    
+    await fs.writeFile(filepath, process.xml, 'utf8');
+    
+    return filepath;
   }
 
   /**
-   * Clear all processes (useful for cleanup)
+   * List all saved diagrams
+   */
+  async listDiagrams(): Promise<Array<{filename: string, path: string, name: string, processId: string}>> {
+    try {
+      const files = await fs.readdir(this.diagramsPath);
+      const bpmnFiles = files.filter(f => f.endsWith('.bpmn'));
+      
+      return bpmnFiles.map(filename => {
+        const match = filename.match(/^(.+?)_(.+)\.bpmn$/);
+        return {
+          filename,
+          path: join(this.diagramsPath, filename),
+          processId: match ? match[1] : filename.replace('.bpmn', ''),
+          name: match ? match[2].replace(/_/g, ' ') : filename.replace('.bpmn', '')
+        };
+      });
+    } catch (error) {
+      console.error('Failed to list diagrams:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Load a saved diagram
+   */
+  async loadDiagram(filename: string): Promise<ProcessContext> {
+    const filepath = join(this.diagramsPath, filename);
+    const xml = await fs.readFile(filepath, 'utf8');
+    return this.importXml(xml);
+  }
+
+  /**
+   * Delete a saved diagram
+   */
+  async deleteDiagram(filename: string): Promise<void> {
+    const filepath = join(this.diagramsPath, filename);
+    await fs.unlink(filepath);
+  }
+
+  /**
+   * Get the diagrams directory path
+   */
+  getDiagramsPath(): string {
+    return this.diagramsPath;
+  }
+
+  /**
+   * Sanitize filename
+   */
+  private sanitizeFilename(name: string): string {
+    return name.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+  }
+
+  /**
+   * Get element factory (compatibility stub)
+   */
+  getElementFactory(processId: string): any {
+    // Return a simple object that delegates to moddleEngine
+    return {
+      createAndConnect: async (sourceId: string, elementDef: ElementDefinition) => {
+        const element = await this.createElement(processId, elementDef);
+        const connection = await this.connect(processId, sourceId, element.id);
+        return { element, connection };
+      }
+    };
+  }
+
+  /**
+   * Get modeler (compatibility stub)
+   */
+  getModeler(processId: string): any {
+    const process = this.getProcess(processId);
+    
+    return {
+      get: (service: string) => {
+        if (service === 'elementRegistry') {
+          return {
+            get: (id: string) => process.elements.get(id),
+            filter: (fn: (element: any) => boolean) => Array.from(process.elements.values()).filter(fn),
+            getAll: () => Array.from(process.elements.values())
+          };
+        }
+        return {};
+      }
+    };
+  }
+
+  /**
+   * Clear all processes
    */
   clear(): void {
-    this.processes.clear();
-    this.modelers.clear();
-    IdGenerator.reset();
+    this.moddleEngine.clear();
   }
 }

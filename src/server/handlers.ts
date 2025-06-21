@@ -40,6 +40,14 @@ export class BpmnRequestHandler {
           return await this.updateElement(args);
         case 'bpmn_delete_element':
           return await this.deleteElement(args);
+        case 'bpmn_list_diagrams':
+          return await this.listDiagrams();
+        case 'bpmn_load_diagram':
+          return await this.loadDiagram(args);
+        case 'bpmn_delete_diagram':
+          return await this.deleteDiagram(args);
+        case 'bpmn_get_diagrams_path':
+          return await this.getDiagramsPath();
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -60,11 +68,14 @@ export class BpmnRequestHandler {
     const { name, type = 'process' } = args;
     const context = await this.engine.createProcess(name, type);
     
+    const filename = `${context.id}_${name.replace(/[^a-zA-Z0-9-_]/g, '_')}.bpmn`;
+    const path = this.engine.getDiagramsPath();
+    
     return {
       content: [
         {
           type: 'text',
-          text: `Created ${type} "${name}" with ID: ${context.id}`
+          text: `Created ${type} "${name}" with ID: ${context.id}\n\nSaved to: ${path}/${filename}`
         }
       ]
     };
@@ -454,6 +465,66 @@ export class BpmnRequestHandler {
         {
           type: 'text',
           text: `Deleted element ${elementId}`
+        }
+      ]
+    };
+  }
+
+  private async listDiagrams(): Promise<CallToolResult> {
+    const diagrams = await this.engine.listDiagrams();
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            count: diagrams.length,
+            diagrams: diagrams,
+            path: this.engine.getDiagramsPath()
+          }, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async loadDiagram(args: any): Promise<CallToolResult> {
+    const { filename } = args;
+    
+    const process = await this.engine.loadDiagram(filename);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Loaded diagram "${process.name}" with ID: ${process.id}\nElements: ${process.elements.size}, Connections: ${process.connections.size}`
+        }
+      ]
+    };
+  }
+
+  private async deleteDiagram(args: any): Promise<CallToolResult> {
+    const { filename } = args;
+    
+    await this.engine.deleteDiagram(filename);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Deleted diagram file: ${filename}`
+        }
+      ]
+    };
+  }
+
+  private async getDiagramsPath(): Promise<CallToolResult> {
+    const path = this.engine.getDiagramsPath();
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `BPMN diagrams are saved to: ${path}\n\nYou can set a custom path using the environment variable: MCP_BPMN_DIAGRAMS_PATH`
         }
       ]
     };
