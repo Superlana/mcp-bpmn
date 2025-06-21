@@ -15,6 +15,7 @@ export interface ElementDefinition {
   position?: Position;
   size?: Size;
   properties?: Record<string, any>;
+  connectFrom?: string;
 }
 
 export interface ProcessContext {

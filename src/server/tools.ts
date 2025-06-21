@@ -418,5 +418,25 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {}
     }
+  },
+  {
+    name: 'bpmn_auto_layout',
+    description: 'Apply automatic layout to a process for better visual positioning',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process to layout'
+        },
+        algorithm: {
+          type: 'string',
+          enum: ['horizontal', 'vertical'],
+          description: 'Layout algorithm to use',
+          default: 'horizontal'
+        }
+      },
+      required: ['processId']
+    }
   }
 ];

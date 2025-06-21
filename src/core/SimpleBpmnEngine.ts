@@ -1,6 +1,7 @@
 import { ProcessContext, ElementDefinition } from '../types/index.js';
 import { IdGenerator } from '../utils/IdGenerator.js';
 import { config } from '../config/index.js';
+import { AutoLayout } from '../utils/AutoLayout.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 
@@ -93,11 +94,17 @@ export class SimpleBpmnEngine {
     const process = this.getProcess(processId);
     const elementId = IdGenerator.generate(elementDef.type.split(':')[1]);
     
+    // Calculate smart position if not provided
+    let position = elementDef.position;
+    if (!position) {
+      position = AutoLayout.calculateSmartPosition(process, elementDef.connectFrom);
+    }
+    
     const element = {
       id: elementId,
       type: elementDef.type,
       name: elementDef.name,
-      position: elementDef.position || { x: 100, y: 100 },
+      position,
       properties: elementDef.properties || {}
     };
 
@@ -157,11 +164,13 @@ export class SimpleBpmnEngine {
       const tagName = this.getXmlTagName(element.type);
       elementXml += `    <bpmn:${tagName} id="${element.id}" name="${element.name || ''}" />\n`;
       
-      // Add basic diagram info
+      // Add diagram info with proper sizing
       const x = element.position?.x || 100;
       const y = element.position?.y || 100;
+      const sizing = this.getElementSizing(element.type);
+      
       diagramXml += `      <bpmndi:BPMNShape id="${element.id}_di" bpmnElement="${element.id}">
-        <dc:Bounds x="${x}" y="${y}" width="36" height="36" />
+        <dc:Bounds x="${x}" y="${y}" width="${sizing.width}" height="${sizing.height}" />
       </bpmndi:BPMNShape>\n`;
     });
 
@@ -201,18 +210,48 @@ ${diagramXml}    </bpmndi:BPMNPlane>
       'bpmn:Task': 'task',
       'bpmn:UserTask': 'userTask',
       'bpmn:ServiceTask': 'serviceTask',
+      'bpmn:SendTask': 'sendTask',
+      'bpmn:ReceiveTask': 'receiveTask',
+      'bpmn:ScriptTask': 'scriptTask',
+      'bpmn:BusinessRuleTask': 'businessRuleTask',
+      'bpmn:ManualTask': 'manualTask',
       'bpmn:ExclusiveGateway': 'exclusiveGateway',
-      'bpmn:ParallelGateway': 'parallelGateway'
+      'bpmn:ParallelGateway': 'parallelGateway',
+      'bpmn:InclusiveGateway': 'inclusiveGateway',
+      'bpmn:EventBasedGateway': 'eventBasedGateway'
     };
     return typeMap[bpmnType] || 'task';
   }
 
   /**
+   * Get appropriate sizing for BPMN element types
+   */
+  private getElementSizing(bpmnType: string): { width: number, height: number } {
+    const sizingMap: { [key: string]: { width: number, height: number } } = {
+      'bpmn:StartEvent': { width: 36, height: 36 },
+      'bpmn:EndEvent': { width: 36, height: 36 },
+      'bpmn:Task': { width: 100, height: 80 },
+      'bpmn:UserTask': { width: 100, height: 80 },
+      'bpmn:ServiceTask': { width: 100, height: 80 },
+      'bpmn:SendTask': { width: 100, height: 80 },
+      'bpmn:ReceiveTask': { width: 100, height: 80 },
+      'bpmn:ScriptTask': { width: 100, height: 80 },
+      'bpmn:BusinessRuleTask': { width: 100, height: 80 },
+      'bpmn:ManualTask': { width: 100, height: 80 },
+      'bpmn:ExclusiveGateway': { width: 50, height: 50 },
+      'bpmn:ParallelGateway': { width: 50, height: 50 },
+      'bpmn:InclusiveGateway': { width: 50, height: 50 },
+      'bpmn:EventBasedGateway': { width: 50, height: 50 }
+    };
+    return sizingMap[bpmnType] || { width: 100, height: 80 };
+  }
+
+  /**
    * Export XML
    */
-  async exportXml(processId: string, formatted: boolean = true): Promise<string> {
+  async exportXml(processId: string, _formatted: boolean = true): Promise<string> {
     const process = this.getProcess(processId);
-    return process.xml;
+    return process.xml || '';
   }
 
   /**
@@ -304,7 +343,7 @@ ${diagramXml}    </bpmndi:BPMNPlane>
     const filename = `${process.id}_${this.sanitizeFilename(process.name)}.bpmn`;
     const filepath = join(this.diagramsPath, filename);
     
-    await fs.writeFile(filepath, process.xml, 'utf8');
+    await fs.writeFile(filepath, process.xml || '', 'utf8');
     
     return filepath;
   }
@@ -314,6 +353,24 @@ ${diagramXml}    </bpmndi:BPMNPlane>
    */
   private sanitizeFilename(name: string): string {
     return name.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+  }
+
+  /**
+   * Apply auto-layout to a process
+   */
+  async applyAutoLayout(processId: string, algorithm: 'horizontal' | 'vertical' = 'horizontal'): Promise<void> {
+    const process = this.getProcess(processId);
+    const { AutoLayout } = await import('../utils/AutoLayout.js');
+    
+    if (algorithm === 'horizontal') {
+      AutoLayout.applyLayout(process);
+    } else {
+      throw new Error('Only horizontal layout algorithm is currently supported');
+    }
+    
+    // Regenerate XML with new positions
+    process.xml = this.generateXmlWithElements(process);
+    await this.saveProcess(process);
   }
 
   /**
