@@ -3,6 +3,9 @@ import { TypeMappings } from '../utils/TypeMappings.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { MermaidConverter } from '../converters/MermaidConverter.js';
 import { FileManager } from '../utils/FileManager.js';
+import { diagramContext } from '../core/DiagramContext.js';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 
 export class BpmnRequestHandler {
   private engine: SimpleBpmnEngine;
@@ -18,48 +21,66 @@ export class BpmnRequestHandler {
   async handleRequest(name: string, args: any): Promise<CallToolResult> {
     try {
       switch (name) {
-        case 'bpmn_create_process':
-          return await this.createProcess(args);
-        case 'bpmn_import_xml':
-          return await this.importXml(args);
-        case 'bpmn_add_event':
+        // Creation tools
+        case 'new_bpmn':
+          return await this.newBpmn(args);
+        case 'new_from_mermaid':
+          return await this.newFromMermaid(args);
+          
+        // File operations
+        case 'open_bpmn':
+          return await this.openBpmn(args);
+        case 'open_mermaid_file':
+          return await this.openMermaidFile(args);
+        case 'save':
+          return await this.save();
+        case 'save_as':
+          return await this.saveAs(args);
+        case 'close':
+          return await this.close();
+        case 'current':
+          return await this.current();
+          
+        // Element manipulation
+        case 'add_event':
           return await this.addEvent(args);
-        case 'bpmn_add_activity':
+        case 'add_activity':
           return await this.addActivity(args);
-        case 'bpmn_add_gateway':
+        case 'add_gateway':
           return await this.addGateway(args);
-        case 'bpmn_connect':
-          return await this.connectElements(args);
-        case 'bpmn_add_pool':
+        case 'connect':
+          return await this.connect(args);
+        case 'add_pool':
           return await this.addPool(args);
-        case 'bpmn_add_lane':
+        case 'add_lane':
           return await this.addLane(args);
-        case 'bpmn_export':
-          return await this.exportProcess(args);
-        case 'bpmn_validate':
-          return await this.validateProcess(args);
-        case 'bpmn_list_elements':
+          
+        // Query and manipulation
+        case 'list_elements':
           return await this.listElements(args);
-        case 'bpmn_get_element':
+        case 'get_element':
           return await this.getElement(args);
-        case 'bpmn_update_element':
+        case 'update_element':
           return await this.updateElement(args);
-        case 'bpmn_delete_element':
+        case 'delete_element':
           return await this.deleteElement(args);
-        case 'bpmn_list_diagrams':
-          return await this.listDiagrams();
-        case 'bpmn_load_diagram':
-          return await this.loadDiagram(args);
-        case 'bpmn_delete_diagram':
-          return await this.deleteDiagram(args);
-        case 'bpmn_get_diagrams_path':
-          return await this.getDiagramsPath();
-        case 'bpmn_auto_layout':
+          
+        // Utility tools
+        case 'export':
+          return await this.export(args);
+        case 'validate':
+          return await this.validate(args);
+        case 'auto_layout':
           return await this.autoLayout(args);
-        case 'bpmn_convert_mermaid':
-          return await this.convertMermaid(args);
-        case 'bpmn_import_mermaid':
-          return await this.importMermaid(args);
+          
+        // File management
+        case 'list_diagrams':
+          return await this.listDiagrams();
+        case 'delete_diagram_file':
+          return await this.deleteDiagramFile(args);
+        case 'get_diagrams_path':
+          return await this.getDiagramsPath();
+          
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -76,45 +97,196 @@ export class BpmnRequestHandler {
     }
   }
 
-  private async createProcess(args: any): Promise<CallToolResult> {
+  // Creation tools
+  private async newBpmn(args: any): Promise<CallToolResult> {
     const { name, type = 'process' } = args;
     const context = await this.engine.createProcess(name, type);
     
-    const filename = `${context.id}_${name.replace(/[^a-zA-Z0-9-_]/g, '_')}.bpmn`;
-    const path = this.engine.getDiagramsPath();
+    diagramContext.setCurrent(context, name);
     
     return {
       content: [
         {
           type: 'text',
-          text: `Created ${type} "${name}" with ID: ${context.id}\n\nSaved to: ${path}/${filename}`
+          text: `Created new ${type} diagram "${name}"`
         }
       ]
     };
   }
 
-  private async importXml(args: any): Promise<CallToolResult> {
-    const { xml, validate = true } = args;
+  private async newFromMermaid(args: any): Promise<CallToolResult> {
+    const { name, mermaidCode } = args;
     
-    // Basic validation
-    if (validate && !xml.includes('bpmn:definitions')) {
-      throw new Error('Invalid BPMN XML: missing definitions element');
+    // Convert Mermaid to BPMN
+    const conversionResult = await this.mermaidConverter.convert(mermaidCode);
+    
+    // Import the XML into the engine
+    const context = await this.engine.importXml(conversionResult.xml);
+    
+    // Update the name
+    context.name = name;
+    
+    diagramContext.setCurrent(context, name);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Created new BPMN diagram "${name}" from Mermaid\nElements: ${conversionResult.stats.nodeCount} nodes, ${conversionResult.stats.edgeCount} flows`
+        }
+      ]
+    };
+  }
+
+  // File operations
+  private async openBpmn(args: any): Promise<CallToolResult> {
+    const { filename } = args;
+    
+    const context = await this.engine.loadDiagram(filename);
+    diagramContext.setCurrent(context, context.name, filename);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Opened BPMN diagram "${context.name}" from ${filename}\nElements: ${context.elements.size}, Connections: ${context.connections.size}`
+        }
+      ]
+    };
+  }
+
+  private async openMermaidFile(args: any): Promise<CallToolResult> {
+    const { filename } = args;
+    
+    // Read the Mermaid file
+    const mermaidPath = join(this.engine.getDiagramsPath(), filename);
+    const mermaidCode = await fs.readFile(mermaidPath, 'utf8');
+    
+    // Convert to BPMN
+    const conversionResult = await this.mermaidConverter.convert(mermaidCode);
+    
+    // Import the XML
+    const context = await this.engine.importXml(conversionResult.xml);
+    
+    // Extract name from filename
+    const name = filename.replace(/\.(mmd|mermaid|txt)$/i, '');
+    context.name = name;
+    
+    diagramContext.setCurrent(context, name);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Opened and converted Mermaid file "${filename}" to BPMN\nElements: ${conversionResult.stats.nodeCount} nodes, ${conversionResult.stats.edgeCount} flows`
+        }
+      ]
+    };
+  }
+
+  private async save(): Promise<CallToolResult> {
+    const info = diagramContext.getCurrentInfo();
+    if (!info) {
+      throw new Error('No current diagram to save');
     }
-
-    const context = await this.engine.importXml(xml);
+    
+    if (!info.filename) {
+      throw new Error('No filename set. Use save_as() to specify a filename');
+    }
+    
+    const context = diagramContext.getCurrent();
+    const saveResult = await this.fileManager.saveBpmnFile(context.xml || '', {
+      filename: info.filename,
+      overwrite: true
+    });
+    
+    if (!saveResult.success) {
+      throw new Error(saveResult.error || 'Failed to save file');
+    }
     
     return {
       content: [
         {
           type: 'text',
-          text: `Imported process "${context.name}" with ID: ${context.id}\nElements: ${context.elements.size}, Connections: ${context.connections.size}`
+          text: `Saved diagram "${info.name}" to ${info.filename}`
         }
       ]
     };
   }
 
+  private async saveAs(args: any): Promise<CallToolResult> {
+    const { filename } = args;
+    const context = diagramContext.getCurrent();
+    const info = diagramContext.getCurrentInfo()!;
+    
+    const saveResult = await this.fileManager.saveBpmnFile(context.xml || '', {
+      filename: filename,
+      overwrite: false
+    });
+    
+    if (!saveResult.success) {
+      throw new Error(saveResult.error || 'Failed to save file');
+    }
+    
+    diagramContext.updateFilename(filename);
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Saved diagram "${info.name}" as ${filename}`
+        }
+      ]
+    };
+  }
+
+  private async close(): Promise<CallToolResult> {
+    const info = diagramContext.getCurrentInfo();
+    if (!info) {
+      throw new Error('No current diagram to close');
+    }
+    
+    const name = info.name;
+    diagramContext.clear();
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Closed diagram "${name}"`
+        }
+      ]
+    };
+  }
+
+  private async current(): Promise<CallToolResult> {
+    const info = diagramContext.getCurrentInfo();
+    
+    if (!info) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'No current diagram'
+          }
+        ]
+      };
+    }
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(info, null, 2)
+        }
+      ]
+    };
+  }
+
+  // Element manipulation methods
   private async addEvent(args: any): Promise<CallToolResult> {
-    const { processId, eventType, name, eventDefinition, position, attachTo } = args;
+    const { eventType, name, eventDefinition, position, attachTo } = args;
+    const context = diagramContext.getCurrent();
     
     const bpmnType = TypeMappings.mapEventType(eventType, eventDefinition);
     const elementDef = {
@@ -127,7 +299,7 @@ export class BpmnRequestHandler {
       }
     };
 
-    const element = await this.engine.createElement(processId, elementDef);
+    const element = await this.engine.createElement(context.id, elementDef);
 
     return {
       content: [
@@ -140,7 +312,8 @@ export class BpmnRequestHandler {
   }
 
   private async addActivity(args: any): Promise<CallToolResult> {
-    const { processId, activityType, name, position, properties = {} } = args;
+    const { activityType, name, position, properties = {} } = args;
+    const context = diagramContext.getCurrent();
     
     const bpmnType = TypeMappings.mapActivityType(activityType);
     const elementDef = {
@@ -150,7 +323,7 @@ export class BpmnRequestHandler {
       properties
     };
 
-    const element = await this.engine.createElement(processId, elementDef);
+    const element = await this.engine.createElement(context.id, elementDef);
 
     return {
       content: [
@@ -163,7 +336,8 @@ export class BpmnRequestHandler {
   }
 
   private async addGateway(args: any): Promise<CallToolResult> {
-    const { processId, gatewayType, name, position } = args;
+    const { gatewayType, name, position } = args;
+    const context = diagramContext.getCurrent();
     
     const bpmnType = TypeMappings.mapGatewayType(gatewayType);
     const elementDef = {
@@ -172,7 +346,7 @@ export class BpmnRequestHandler {
       position
     };
 
-    const element = await this.engine.createElement(processId, elementDef);
+    const element = await this.engine.createElement(context.id, elementDef);
 
     return {
       content: [
@@ -184,10 +358,11 @@ export class BpmnRequestHandler {
     };
   }
 
-  private async connectElements(args: any): Promise<CallToolResult> {
-    const { processId, sourceId, targetId, label, condition } = args;
+  private async connect(args: any): Promise<CallToolResult> {
+    const { sourceId, targetId, label, condition } = args;
+    const context = diagramContext.getCurrent();
     
-    const connection = await this.engine.connect(processId, sourceId, targetId, label);
+    const connection = await this.engine.connect(context.id, sourceId, targetId, label);
     
     // Note: Condition expressions are stored but not yet applied to XML in SimpleBpmnEngine
     if (condition) {
@@ -205,11 +380,11 @@ export class BpmnRequestHandler {
   }
 
   private async addPool(args: any): Promise<CallToolResult> {
-    const { processId, name, position, size } = args;
+    const { name, position, size } = args;
+    const context = diagramContext.getCurrent();
     
-    const process = this.engine.getProcess(processId);
-    if (process.type !== 'collaboration') {
-      throw new Error('Pools can only be added to collaborations. Create a collaboration first.');
+    if (context.type !== 'collaboration') {
+      throw new Error('Pools can only be added to collaborations. Create a collaboration first with new_bpmn()');
     }
 
     const elementDef = {
@@ -219,7 +394,7 @@ export class BpmnRequestHandler {
       size: size || { width: 600, height: 250 }
     };
 
-    const element = await this.engine.createElement(processId, elementDef);
+    const element = await this.engine.createElement(context.id, elementDef);
 
     return {
       content: [
@@ -232,20 +407,164 @@ export class BpmnRequestHandler {
   }
 
   private async addLane(args: any): Promise<CallToolResult> {
-    const { processId: _processId, poolId: _poolId, name: _name, position: _position = 'bottom' } = args;
+    const { poolId: _poolId, name: _name, position: _position = 'bottom' } = args;
     
     // For SimpleBpmnEngine, lanes are not yet fully implemented
     throw new Error('Lanes are not yet implemented in SimpleBpmnEngine. Use pools instead.');
   }
 
-  private async exportProcess(args: any): Promise<CallToolResult> {
-    const { processId, format = 'xml', formatted = true } = args;
+  // Query and manipulation methods
+  private async listElements(args: any): Promise<CallToolResult> {
+    const { elementType } = args;
+    const context = diagramContext.getCurrent();
+    
+    const elements = Array.from(context.elements.values());
+    const connections = Array.from(context.connections.values());
+    
+    const filteredElements = elements.filter((e: any) => {
+      if (elementType) {
+        return e.type === elementType;
+      }
+      return true;
+    });
+
+    const elementList = filteredElements.map((e: any) => {
+      const incoming = connections.filter((c: any) => c.target === e.id);
+      const outgoing = connections.filter((c: any) => c.source === e.id);
+      
+      return {
+        id: e.id,
+        type: e.type,
+        name: e.name,
+        position: e.position,
+        incoming: incoming.length,
+        outgoing: outgoing.length
+      };
+    });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(elementList, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async getElement(args: any): Promise<CallToolResult> {
+    const { elementId } = args;
+    const context = diagramContext.getCurrent();
+    
+    const element = context.elements.get(elementId);
+    const connections = Array.from(context.connections.values());
+    
+    if (!element) {
+      throw new Error(`Element ${elementId} not found`);
+    }
+
+    const incoming = connections.filter((c: any) => c.target === elementId);
+    const outgoing = connections.filter((c: any) => c.source === elementId);
+
+    const details = {
+      id: element.id,
+      type: element.type,
+      name: element.name,
+      position: element.position,
+      incoming: incoming.map(c => ({ id: c.id, source: c.source })),
+      outgoing: outgoing.map(c => ({ id: c.id, target: c.target })),
+      properties: element.properties
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(details, null, 2)
+        }
+      ]
+    };
+  }
+
+  private async updateElement(args: any): Promise<CallToolResult> {
+    const { elementId, name, properties } = args;
+    const context = diagramContext.getCurrent();
+    
+    const element = context.elements.get(elementId);
+    
+    if (!element) {
+      throw new Error(`Element ${elementId} not found`);
+    }
+
+    // Update name if provided
+    if (name !== undefined) {
+      element.name = name;
+    }
+
+    // Update other properties
+    if (properties) {
+      Object.assign(element.properties, properties);
+    }
+
+    // Regenerate XML
+    context.xml = await this.engine.exportXml(context.id, true);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Updated element ${elementId}`
+        }
+      ]
+    };
+  }
+
+  private async deleteElement(args: any): Promise<CallToolResult> {
+    const { elementId } = args;
+    const context = diagramContext.getCurrent();
+    
+    if (!context.elements.has(elementId)) {
+      throw new Error(`Element ${elementId} not found`);
+    }
+
+    // Remove element
+    context.elements.delete(elementId);
+    
+    // Remove any connections involving this element
+    const connectionsToRemove = [];
+    for (const [connId, conn] of context.connections) {
+      if (conn.source === elementId || conn.target === elementId) {
+        connectionsToRemove.push(connId);
+      }
+    }
+    
+    connectionsToRemove.forEach(connId => {
+      context.connections.delete(connId);
+    });
+
+    // Regenerate XML
+    context.xml = await this.engine.exportXml(context.id, true);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Deleted element ${elementId} and ${connectionsToRemove.length} associated connections`
+        }
+      ]
+    };
+  }
+
+  // Utility methods
+  private async export(args: any): Promise<CallToolResult> {
+    const { format = 'xml', formatted = true } = args;
+    const context = diagramContext.getCurrent();
     
     if (format === 'svg') {
       throw new Error('SVG export is not yet implemented in SimpleBpmnEngine');
     }
     
-    const content = await this.engine.exportXml(processId, formatted);
+    const content = await this.engine.exportXml(context.id, formatted);
 
     return {
       content: [
@@ -257,32 +576,31 @@ export class BpmnRequestHandler {
     };
   }
 
-  private async validateProcess(args: any): Promise<CallToolResult> {
-    const { processId } = args;
+  private async validate(_args: any): Promise<CallToolResult> {
+    const context = diagramContext.getCurrent();
     
-    const process = this.engine.getProcess(processId);
-    const elements = Array.from(process.elements.values());
-    const connections = Array.from(process.connections.values());
+    const elements = Array.from(context.elements.values());
+    const connections = Array.from(context.connections.values());
     
     const errors: string[] = [];
     const warnings: string[] = [];
 
     // Check for start events
-    const startEvents = elements.filter(e => e.type === 'bpmn:StartEvent');
+    const startEvents = elements.filter((e: any) => e.type === 'bpmn:StartEvent');
     if (startEvents.length === 0) {
       errors.push('Process must have at least one start event');
     }
 
     // Check for end events
-    const endEvents = elements.filter(e => e.type === 'bpmn:EndEvent');
+    const endEvents = elements.filter((e: any) => e.type === 'bpmn:EndEvent');
     if (endEvents.length === 0) {
       warnings.push('Process should have at least one end event');
     }
 
     // Check for disconnected elements
-    elements.forEach(element => {
-      const incomingConnections = connections.filter(c => c.target === element.id);
-      const outgoingConnections = connections.filter(c => c.source === element.id);
+    elements.forEach((element: any) => {
+      const incomingConnections = connections.filter((c: any) => c.target === element.id);
+      const outgoingConnections = connections.filter((c: any) => c.source === element.id);
       
       if (incomingConnections.length === 0 && element.type !== 'bpmn:StartEvent') {
         warnings.push(`Element ${element.id} has no incoming connections`);
@@ -309,146 +627,27 @@ export class BpmnRequestHandler {
     };
   }
 
-  private async listElements(args: any): Promise<CallToolResult> {
-    const { processId, elementType } = args;
+  private async autoLayout(args: any): Promise<CallToolResult> {
+    const { algorithm = 'horizontal' } = args;
+    const context = diagramContext.getCurrent();
     
-    const process = this.engine.getProcess(processId);
-    const elements = Array.from(process.elements.values());
-    const connections = Array.from(process.connections.values());
+    const elementCount = context.elements.size;
+    const connectionCount = context.connections.size;
     
-    const filteredElements = elements.filter(e => {
-      if (elementType) {
-        return e.type === elementType;
-      }
-      return true;
-    });
-
-    const elementList = filteredElements.map(e => {
-      const incoming = connections.filter(c => c.target === e.id);
-      const outgoing = connections.filter(c => c.source === e.id);
-      
-      return {
-        id: e.id,
-        type: e.type,
-        name: e.name,
-        position: e.position,
-        incoming: incoming.length,
-        outgoing: outgoing.length
-      };
-    });
-
+    // Apply auto-layout
+    await this.engine.applyAutoLayout(context.id, algorithm);
+    
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify(elementList, null, 2)
+          text: `Applied ${algorithm} auto-layout to current diagram\n\nRepositioned ${elementCount} elements and ${connectionCount} connections.`
         }
       ]
     };
   }
 
-  private async getElement(args: any): Promise<CallToolResult> {
-    const { processId, elementId } = args;
-    
-    const process = this.engine.getProcess(processId);
-    const element = process.elements.get(elementId);
-    const connections = Array.from(process.connections.values());
-    
-    if (!element) {
-      throw new Error(`Element ${elementId} not found`);
-    }
-
-    const incoming = connections.filter(c => c.target === elementId);
-    const outgoing = connections.filter(c => c.source === elementId);
-
-    const details = {
-      id: element.id,
-      type: element.type,
-      name: element.name,
-      position: element.position,
-      incoming: incoming.map(c => ({ id: c.id, source: c.source })),
-      outgoing: outgoing.map(c => ({ id: c.id, target: c.target })),
-      properties: element.properties
-    };
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(details, null, 2)
-        }
-      ]
-    };
-  }
-
-  private async updateElement(args: any): Promise<CallToolResult> {
-    const { processId, elementId, name, properties } = args;
-    
-    const process = this.engine.getProcess(processId);
-    const element = process.elements.get(elementId);
-    
-    if (!element) {
-      throw new Error(`Element ${elementId} not found`);
-    }
-
-    // Update name if provided
-    if (name !== undefined) {
-      element.name = name;
-    }
-
-    // Update other properties
-    if (properties) {
-      Object.assign(element.properties, properties);
-    }
-
-    // Regenerate XML (SimpleBpmnEngine automatically updates XML)
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Updated element ${elementId}`
-        }
-      ]
-    };
-  }
-
-  private async deleteElement(args: any): Promise<CallToolResult> {
-    const { processId, elementId } = args;
-    
-    const process = this.engine.getProcess(processId);
-    
-    if (!process.elements.has(elementId)) {
-      throw new Error(`Element ${elementId} not found`);
-    }
-
-    // Remove element
-    process.elements.delete(elementId);
-    
-    // Remove any connections involving this element
-    const connectionsToRemove = [];
-    for (const [connId, conn] of process.connections) {
-      if (conn.source === elementId || conn.target === elementId) {
-        connectionsToRemove.push(connId);
-      }
-    }
-    
-    connectionsToRemove.forEach(connId => {
-      process.connections.delete(connId);
-    });
-
-    // Regenerate XML (SimpleBpmnEngine automatically updates XML)
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Deleted element ${elementId} and ${connectionsToRemove.length} associated connections`
-        }
-      ]
-    };
-  }
-
+  // File management methods
   private async listDiagrams(): Promise<CallToolResult> {
     const diagrams = await this.engine.listDiagrams();
     
@@ -466,22 +665,7 @@ export class BpmnRequestHandler {
     };
   }
 
-  private async loadDiagram(args: any): Promise<CallToolResult> {
-    const { filename } = args;
-    
-    const process = await this.engine.loadDiagram(filename);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Loaded diagram "${process.name}" with ID: ${process.id}\nElements: ${process.elements.size}, Connections: ${process.connections.size}`
-        }
-      ]
-    };
-  }
-
-  private async deleteDiagram(args: any): Promise<CallToolResult> {
+  private async deleteDiagramFile(args: any): Promise<CallToolResult> {
     const { filename } = args;
     
     await this.engine.deleteDiagram(filename);
@@ -507,107 +691,5 @@ export class BpmnRequestHandler {
         }
       ]
     };
-  }
-
-  private async autoLayout(args: any): Promise<CallToolResult> {
-    const { processId, algorithm = 'horizontal' } = args;
-    
-    const process = this.engine.getProcess(processId);
-    const elementCount = process.elements.size;
-    const connectionCount = process.connections.size;
-    
-    // Apply auto-layout
-    await this.engine.applyAutoLayout(processId, algorithm);
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Applied ${algorithm} auto-layout to process ${processId}\n\nRepositioned ${elementCount} elements and ${connectionCount} connections\n\nElements are now positioned with proper spacing to avoid visual overlap.`
-        }
-      ]
-    };
-  }
-
-  private async convertMermaid(args: any): Promise<CallToolResult> {
-    const { mermaidCode, processName = 'Converted Process', saveToFile = false, filename } = args;
-    
-    try {
-      // Convert Mermaid to BPMN XML
-      const conversionResult = await this.mermaidConverter.convert(mermaidCode);
-      
-      let savedInfo = '';
-      if (saveToFile) {
-        // Save the file
-        const finalFilename = filename || `${processName.replace(/[^a-zA-Z0-9-_]/g, '_')}_${new Date().toISOString().split('T')[0]}.bpmn`;
-        const saveResult = await this.fileManager.saveBpmnFile(conversionResult.xml, {
-          filename: finalFilename
-        });
-        if (!saveResult.success) {
-          throw new Error(saveResult.error || 'Failed to save file');
-        }
-        const filePath = saveResult.filePath;
-        savedInfo = `\n\nSaved to: ${filePath}`;
-      }
-      
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully converted Mermaid diagram to BPMN 2.0\n\nProcess: ${processName}\nElements: ${conversionResult.stats.nodeCount} nodes, ${conversionResult.stats.edgeCount} flows\nConfidence: ${Math.round(conversionResult.confidence * 100)}%${savedInfo}\n\n${conversionResult.xml}`
-          }
-        ]
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Failed to convert Mermaid diagram: ${error.message}`
-          }
-        ],
-        isError: true
-      };
-    }
-  }
-
-  private async importMermaid(args: any): Promise<CallToolResult> {
-    const { mermaidCode, processName = 'Imported Process', autoLayout = true } = args;
-    
-    try {
-      // Convert Mermaid to BPMN XML
-      const conversionResult = await this.mermaidConverter.convert(mermaidCode);
-      
-      // Import the XML into the engine to create an editable process
-      const context = await this.engine.importXml(conversionResult.xml);
-      
-      // Apply auto-layout if requested
-      if (autoLayout) {
-        await this.engine.applyAutoLayout(context.id, 'horizontal');
-      }
-      
-      // Save the imported process
-      const filename = `${context.id}_${processName.replace(/[^a-zA-Z0-9-_]/g, '_')}.bpmn`;
-      const path = this.engine.getDiagramsPath();
-      
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully imported Mermaid diagram as BPMN process\n\nProcess ID: ${context.id}\nProcess Name: ${processName}\nElements: ${context.elements.size} nodes, ${context.connections.size} flows\nAuto-layout: ${autoLayout ? 'Applied' : 'Skipped'}\n\nSaved to: ${path}/${filename}\n\nYou can now edit this process using the BPMN tools.`
-          }
-        ]
-      };
-    } catch (error: any) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Failed to import Mermaid diagram: ${error.message}`
-          }
-        ],
-        isError: true
-      };
-    }
   }
 }

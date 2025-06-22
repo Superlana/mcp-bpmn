@@ -65,24 +65,89 @@ node dist/server/bundle.cjs
 
 ## 📚 API Reference
 
-### Core Process Tools
+### Stateful Context Management
 
-#### `bpmn_create_process`
-Create a new BPMN process or collaboration diagram.
+MCP-BPMN uses a stateful API design where you work with one diagram at a time. All operations apply to the current diagram context, eliminating the need for processId parameters.
+
+### Creation Tools
+
+#### `new_bpmn`
+Create a new BPMN process or collaboration diagram and set it as the current context.
 
 ```javascript
 {
   name: "Order Processing",
-  type: "process" // or "collaboration"
+  type: "process" // or "collaboration" (optional, defaults to "process")
 }
 ```
 
-#### `bpmn_add_event`
-Add events (start, end, intermediate, boundary) to the process.
+#### `new_from_mermaid`
+Create a new BPMN diagram from Mermaid code and set it as the current context.
 
 ```javascript
 {
-  processId: "Process_1",
+  name: "My Process",
+  mermaidCode: "graph TD\n  A[Start] --> B[Task] --> C[End]"
+}
+```
+
+### File Operations
+
+#### `open_bpmn`
+Open an existing BPMN file and set it as the current context.
+
+```javascript
+{
+  filename: "my-process.bpmn"
+}
+```
+
+#### `open_mermaid_file`
+Open and convert a Mermaid file to BPMN, setting it as the current context.
+
+```javascript
+{
+  filename: "my-flowchart.mmd"
+}
+```
+
+#### `save`
+Save the current diagram to its file (requires filename to be set).
+
+```javascript
+{}
+```
+
+#### `save_as`
+Save the current diagram with a new filename.
+
+```javascript
+{
+  filename: "my-process.bpmn"
+}
+```
+
+#### `close`
+Close the current diagram and clear the context.
+
+```javascript
+{}
+```
+
+#### `current`
+Get information about the current diagram.
+
+```javascript
+{}
+```
+
+### Element Manipulation Tools
+
+#### `add_event`
+Add events (start, end, intermediate, boundary) to the current diagram.
+
+```javascript
+{
   eventType: "start", // start, end, intermediate-throw, intermediate-catch, boundary
   name: "Order Received",
   eventDefinition: "message", // optional: message, timer, error, signal, etc.
@@ -90,12 +155,11 @@ Add events (start, end, intermediate, boundary) to the process.
 }
 ```
 
-#### `bpmn_add_activity`
-Add activities (tasks, subprocesses) to the process.
+#### `add_activity`
+Add activities (tasks, subprocesses) to the current diagram.
 
 ```javascript
 {
-  processId: "Process_1",
   activityType: "userTask", // task, userTask, serviceTask, scriptTask, etc.
   name: "Review Order",
   position: { x: 250, y: 200 }, // optional
@@ -103,24 +167,22 @@ Add activities (tasks, subprocesses) to the process.
 }
 ```
 
-#### `bpmn_add_gateway`
-Add gateways for branching logic.
+#### `add_gateway`
+Add gateways for branching logic to the current diagram.
 
 ```javascript
 {
-  processId: "Process_1",
   gatewayType: "exclusive", // exclusive, parallel, inclusive, eventBased
   name: "Payment Check",
   position: { x: 400, y: 200 } // optional
 }
 ```
 
-#### `bpmn_connect`
-Connect two elements with a sequence flow.
+#### `connect`
+Connect two elements with a sequence flow in the current diagram.
 
 ```javascript
 {
-  processId: "Process_1",
   sourceId: "StartEvent_1",
   targetId: "UserTask_1",
   label: "Start Flow", // optional
@@ -128,66 +190,137 @@ Connect two elements with a sequence flow.
 }
 ```
 
-### Layout and Export Tools
-
-#### `bpmn_auto_layout`
-Apply automatic layout to position elements.
+#### `add_pool`
+Add a pool (participant) to a collaboration diagram.
 
 ```javascript
 {
-  processId: "Process_1",
+  name: "Customer",
+  position: { x: 100, y: 100 }, // optional
+  size: { width: 600, height: 250 } // optional
+}
+```
+
+#### `add_lane`
+Add a lane to a pool (not yet fully implemented).
+
+```javascript
+{
+  poolId: "Participant_1",
+  name: "Sales Department",
+  position: "bottom" // optional
+}
+```
+
+### Query and Manipulation Tools
+
+#### `list_elements`
+List all elements in the current diagram.
+
+```javascript
+{
+  elementType: "bpmn:Task" // optional filter
+}
+```
+
+#### `get_element`
+Get details of a specific element.
+
+```javascript
+{
+  elementId: "UserTask_1"
+}
+```
+
+#### `update_element`
+Update element properties.
+
+```javascript
+{
+  elementId: "UserTask_1",
+  name: "Updated Task Name",
+  properties: { assignee: "john.doe" }
+}
+```
+
+#### `delete_element`
+Delete an element and its connections.
+
+```javascript
+{
+  elementId: "Task_1"
+}
+```
+
+### Utility Tools
+
+#### `export`
+Export the current diagram as BPMN 2.0 XML.
+
+```javascript
+{
+  format: "xml", // only xml is currently supported
+  formatted: true // optional, defaults to true
+}
+```
+
+#### `validate`
+Validate the current diagram structure.
+
+```javascript
+{}
+```
+
+#### `auto_layout`
+Apply automatic layout to position elements in the current diagram.
+
+```javascript
+{
   algorithm: "horizontal" // currently only horizontal is supported
 }
 ```
 
-#### `bpmn_export`
-Export the process as BPMN 2.0 XML.
+### File Management Tools
+
+#### `list_diagrams`
+List all saved BPMN diagrams.
+
+```javascript
+{}
+```
+
+#### `delete_diagram_file`
+Delete a saved diagram file.
 
 ```javascript
 {
-  processId: "Process_1",
-  format: "xml", // only xml is currently supported
-  formatted: true
+  filename: "old-process.bpmn"
 }
 ```
 
-### Diagram Management Tools
-
-- `bpmn_list_diagrams` - List all saved BPMN diagrams
-- `bpmn_load_diagram` - Load a saved diagram
-- `bpmn_delete_diagram` - Delete a saved diagram
-- `bpmn_get_diagrams_path` - Get the storage path for diagrams
-
-### Element Management Tools
-
-- `bpmn_list_elements` - List all elements in a process
-- `bpmn_get_element` - Get details of a specific element
-- `bpmn_update_element` - Update element properties
-- `bpmn_delete_element` - Delete an element
-
-### Mermaid Conversion Tools
-
-#### `bpmn_convert_mermaid`
-Convert a Mermaid flowchart to BPMN 2.0 format.
+#### `get_diagrams_path`
+Get the storage path for diagrams.
 
 ```javascript
-{
-  mermaidCode: "graph TD\n  A[Start] --> B{Decision}\n  B -->|Yes| C[Process]\n  B -->|No| D[End]",
-  processName: "My Process",
-  saveToFile: true,
-  filename: "converted-process.bpmn"
-}
+{}
 ```
 
-#### `bpmn_import_mermaid`
-Import a Mermaid diagram as an editable BPMN process.
+## 🔄 Context Management
 
-```javascript
-{
-  mermaidCode: "graph TD\n  A[Start] --> B[Task] --> C[End]",
-  processName: "Imported Process",
-  autoLayout: true
-}
+The MCP-BPMN server uses a stateful design where you work with one diagram at a time:
+
+1. **Create or Open**: Start by creating a new diagram (`new_bpmn`, `new_from_mermaid`) or opening an existing one (`open_bpmn`, `open_mermaid_file`)
+2. **Manipulate**: All operations (`add_event`, `connect`, etc.) apply to the current diagram
+3. **Save**: Save your work with `save` or `save_as`
+4. **Close**: Close the current diagram with `close`
+
+If you try to perform operations without a current context, you'll get a helpful error message:
+```
+No current context. Please create a diagram first with:
+  - new_bpmn(name) to create a new BPMN diagram
+  - new_from_mermaid(name, mermaidCode) to convert from Mermaid
+  - open_bpmn(filename) to open an existing BPMN file
+  - open_mermaid_file(filename) to convert a Mermaid file
 ```
 
 ## 💡 Examples
@@ -195,62 +328,87 @@ Import a Mermaid diagram as an editable BPMN process.
 ### Example 1: Creating an Approval Process from Scratch
 
 ```javascript
-// Step 1: Create the process
-await bpmn_create_process({ name: "Approval Workflow" });
+// Step 1: Create a new process (sets it as current context)
+await new_bpmn({ name: "Approval Workflow" });
 
-// Step 2: Add elements
-await bpmn_add_event({ processId, eventType: "start", name: "Request Received" });
-await bpmn_add_activity({ processId, activityType: "userTask", name: "Review Request" });
-await bpmn_add_gateway({ processId, gatewayType: "exclusive", name: "Approved?" });
-await bpmn_add_activity({ processId, activityType: "serviceTask", name: "Process Approval" });
-await bpmn_add_activity({ processId, activityType: "userTask", name: "Handle Rejection" });
-await bpmn_add_event({ processId, eventType: "end", name: "Complete" });
+// Step 2: Add elements (all operations apply to current diagram)
+await add_event({ eventType: "start", name: "Request Received" });
+await add_activity({ activityType: "userTask", name: "Review Request" });
+await add_gateway({ gatewayType: "exclusive", name: "Approved?" });
+await add_activity({ activityType: "serviceTask", name: "Process Approval" });
+await add_activity({ activityType: "userTask", name: "Handle Rejection" });
+await add_event({ eventType: "end", name: "Complete" });
 
-// Step 3: Connect elements explicitly
-await bpmn_connect({ processId, sourceId: "StartEvent_1", targetId: "UserTask_1" });
-await bpmn_connect({ processId, sourceId: "UserTask_1", targetId: "ExclusiveGateway_1" });
-await bpmn_connect({ processId, sourceId: "ExclusiveGateway_1", targetId: "ServiceTask_1", label: "Yes" });
-await bpmn_connect({ processId, sourceId: "ExclusiveGateway_1", targetId: "UserTask_2", label: "No" });
-await bpmn_connect({ processId, sourceId: "ServiceTask_1", targetId: "EndEvent_1" });
-await bpmn_connect({ processId, sourceId: "UserTask_2", targetId: "EndEvent_1" });
+// Step 3: Connect elements
+await connect({ sourceId: "StartEvent_1", targetId: "UserTask_1" });
+await connect({ sourceId: "UserTask_1", targetId: "ExclusiveGateway_1" });
+await connect({ sourceId: "ExclusiveGateway_1", targetId: "ServiceTask_1", label: "Yes" });
+await connect({ sourceId: "ExclusiveGateway_1", targetId: "UserTask_2", label: "No" });
+await connect({ sourceId: "ServiceTask_1", targetId: "EndEvent_1" });
+await connect({ sourceId: "UserTask_2", targetId: "EndEvent_1" });
 
 // Step 4: Apply auto-layout for proper positioning
-await bpmn_auto_layout({ processId });
+await auto_layout();
 
-// Step 5: Export the diagram
-const xml = await bpmn_export({ processId });
+// Step 5: Save and export the diagram
+await save_as({ filename: "approval-workflow.bpmn" });
+const xml = await export();
 ```
 
 ### Example 2: Bootstrap from Mermaid (Recommended for Lower Token Usage)
 
 ```javascript
-// Step 1: Define process in Mermaid syntax (much more concise!)
-const mermaidCode = `
-graph TD
-  A((Request Received)) --> B[Review Request]
-  B --> C{Approved?}
-  C -->|Yes| D[Process Approval]
-  C -->|No| E[Handle Rejection]
-  D --> F((Complete))
-  E --> F
-`;
-
-// Step 2: Import as editable BPMN process
-const result = await bpmn_import_mermaid({ 
-  mermaidCode, 
-  processName: "Approval Workflow",
-  autoLayout: true 
+// Step 1: Create from Mermaid syntax (much more concise!)
+await new_from_mermaid({ 
+  name: "Approval Workflow",
+  mermaidCode: `
+    graph TD
+      A((Request Received)) --> B[Review Request]
+      B --> C{Approved?}
+      C -->|Yes| D[Process Approval]
+      C -->|No| E[Handle Rejection]
+      D --> F((Complete))
+      E --> F
+  `
 });
 
+// Step 2: Apply auto-layout (Mermaid conversion includes basic layout)
+await auto_layout();
+
 // Step 3: Make additional edits if needed
-await bpmn_update_element({ 
-  processId: result.processId, 
+await update_element({ 
   elementId: "UserTask_1", 
   properties: { assignee: "reviewer" }
 });
 
-// Step 4: Export the final diagram
-const xml = await bpmn_export({ processId: result.processId });
+// Step 4: Save and export
+await save_as({ filename: "approval-workflow.bpmn" });
+const xml = await export();
+```
+
+### Example 3: Working with Multiple Diagrams
+
+```javascript
+// Create first diagram
+await new_bpmn({ name: "Process A" });
+await add_event({ eventType: "start" });
+await add_activity({ activityType: "task", name: "Task A" });
+await save_as({ filename: "process-a.bpmn" });
+
+// Create second diagram (automatically closes the first)
+await new_bpmn({ name: "Process B" });
+await add_event({ eventType: "start" });
+await add_activity({ activityType: "task", name: "Task B" });
+await save_as({ filename: "process-b.bpmn" });
+
+// Go back to first diagram
+await open_bpmn({ filename: "process-a.bpmn" });
+await add_event({ eventType: "end" });
+await save();
+
+// Check current diagram info
+const info = await current();
+console.log(info); // Shows: { name: "Process A", filename: "process-a.bpmn", ... }
 ```
 
 ## 🗂️ File Storage
@@ -277,8 +435,10 @@ Files are named: `{ProcessId}_{ProcessName}.bpmn`
 
 ### Key Components
 - `SimpleBpmnEngine` - Core BPMN XML generation without browser dependencies
+- `DiagramContext` - Stateful context management for current diagram
 - `AutoLayout` - Smart positioning algorithm with branch handling
 - `BpmnRequestHandler` - MCP request processing
+- `MermaidConverter` - Mermaid to BPMN conversion
 - `TypeMappings` - BPMN element type conversions
 - `IdGenerator` - Consistent ID generation
 
@@ -348,12 +508,13 @@ npm run test:watch         # Watch mode
 
 - [ ] SVG export support
 - [ ] Vertical and radial layout algorithms
-- [ ] BPMN validation framework
-- [ ] Mermaid diagram import/export
+- [ ] Enhanced BPMN validation framework
+- [x] Mermaid diagram import/export (Completed!)
 - [ ] Natural language to BPMN conversion
 - [ ] Integration with Camunda/Activiti engines
 - [ ] Subprocess expansion support
 - [ ] Message flow between pools
+- [ ] BPMN execution simulation
 
 ## 🤝 Contributing
 

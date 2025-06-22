@@ -178,11 +178,15 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'add_gateway',
-    description: 'Add a gateway to the current diagram',
+    name: 'bpmn_add_gateway',
+    description: 'Add a gateway (decision point) to the process',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         gatewayType: {
           type: 'string',
           enum: ['exclusive', 'parallel', 'inclusive', 'eventBased', 'complex'],
@@ -199,17 +203,25 @@ export const tools: Tool[] = [
             y: { type: 'number' }
           },
           description: 'Position of the gateway (optional)'
+        },
+        connectFrom: {
+          type: 'string',
+          description: 'ID of element to connect from (optional)'
         }
       },
-      required: ['gatewayType']
+      required: ['processId', 'gatewayType']
     }
   },
   {
-    name: 'connect',
-    description: 'Connect two elements in the current diagram',
+    name: 'bpmn_connect',
+    description: 'Connect two elements with a sequence flow',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         sourceId: {
           type: 'string',
           description: 'ID of the source element'
@@ -227,15 +239,19 @@ export const tools: Tool[] = [
           description: 'Condition expression for the flow (optional)'
         }
       },
-      required: ['sourceId', 'targetId']
+      required: ['processId', 'sourceId', 'targetId']
     }
   },
   {
-    name: 'add_pool',
-    description: 'Add a pool to the current collaboration diagram',
+    name: 'bpmn_add_pool',
+    description: 'Add a participant pool to a collaboration',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the collaboration'
+        },
         name: {
           type: 'string',
           description: 'Name of the participant/pool'
@@ -257,15 +273,19 @@ export const tools: Tool[] = [
           description: 'Size of the pool (optional)'
         }
       },
-      required: ['name']
+      required: ['processId', 'name']
     }
   },
   {
-    name: 'add_lane',
-    description: 'Add a lane to an existing pool in the current diagram',
+    name: 'bpmn_add_lane',
+    description: 'Add a lane to an existing pool',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         poolId: {
           type: 'string',
           description: 'ID of the pool to add lane to'
@@ -281,44 +301,100 @@ export const tools: Tool[] = [
           default: 'bottom'
         }
       },
-      required: ['poolId', 'name']
+      required: ['processId', 'poolId', 'name']
     }
   },
-  
-  // Query and manipulation tools
   {
-    name: 'list_elements',
-    description: 'List all elements in the current diagram',
+    name: 'bpmn_export',
+    description: 'Export the process as BPMN 2.0 XML or SVG',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process to export'
+        },
+        format: {
+          type: 'string',
+          enum: ['xml', 'svg'],
+          description: 'Export format',
+          default: 'xml'
+        },
+        formatted: {
+          type: 'boolean',
+          description: 'Whether to format the output (for XML)',
+          default: true
+        }
+      },
+      required: ['processId']
+    }
+  },
+  {
+    name: 'bpmn_validate',
+    description: 'Validate a BPMN process for correctness',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process to validate'
+        },
+        level: {
+          type: 'string',
+          enum: ['syntax', 'semantic', 'full'],
+          description: 'Validation level',
+          default: 'full'
+        }
+      },
+      required: ['processId']
+    }
+  },
+  {
+    name: 'bpmn_list_elements',
+    description: 'List all elements in a process',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         elementType: {
           type: 'string',
           description: 'Filter by element type (optional)'
         }
-      }
+      },
+      required: ['processId']
     }
   },
   {
-    name: 'get_element',
-    description: 'Get details of a specific element in the current diagram',
+    name: 'bpmn_get_element',
+    description: 'Get details of a specific element',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         elementId: {
           type: 'string',
           description: 'ID of the element'
         }
       },
-      required: ['elementId']
+      required: ['processId', 'elementId']
     }
   },
   {
-    name: 'update_element',
-    description: 'Update properties of an element in the current diagram',
+    name: 'bpmn_update_element',
+    description: 'Update properties of an existing element',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         elementId: {
           type: 'string',
           description: 'ID of the element to update'
@@ -332,79 +408,29 @@ export const tools: Tool[] = [
           description: 'Properties to update'
         }
       },
-      required: ['elementId']
+      required: ['processId', 'elementId']
     }
   },
   {
-    name: 'delete_element',
-    description: 'Delete an element from the current diagram',
+    name: 'bpmn_delete_element',
+    description: 'Delete an element from the process',
     inputSchema: {
       type: 'object',
       properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process'
+        },
         elementId: {
           type: 'string',
           description: 'ID of the element to delete'
         }
       },
-      required: ['elementId']
-    }
-  },
-  
-  // Utility tools
-  {
-    name: 'export',
-    description: 'Export the current diagram as BPMN XML',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        format: {
-          type: 'string',
-          enum: ['xml', 'svg'],
-          description: 'Export format',
-          default: 'xml'
-        },
-        formatted: {
-          type: 'boolean',
-          description: 'Whether to format the output (for XML)',
-          default: true
-        }
-      }
+      required: ['processId', 'elementId']
     }
   },
   {
-    name: 'validate',
-    description: 'Validate the current diagram for BPMN correctness',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        level: {
-          type: 'string',
-          enum: ['syntax', 'semantic', 'full'],
-          description: 'Validation level',
-          default: 'full'
-        }
-      }
-    }
-  },
-  {
-    name: 'auto_layout',
-    description: 'Apply automatic layout to the current diagram',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        algorithm: {
-          type: 'string',
-          enum: ['horizontal', 'vertical'],
-          description: 'Layout algorithm to use',
-          default: 'horizontal'
-        }
-      }
-    }
-  },
-  
-  // File management tools
-  {
-    name: 'list_diagrams',
+    name: 'bpmn_list_diagrams',
     description: 'List all saved BPMN diagrams',
     inputSchema: {
       type: 'object',
@@ -412,7 +438,21 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'delete_diagram_file',
+    name: 'bpmn_load_diagram',
+    description: 'Load a saved BPMN diagram',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Filename of the diagram to load'
+        }
+      },
+      required: ['filename']
+    }
+  },
+  {
+    name: 'bpmn_delete_diagram',
     description: 'Delete a saved BPMN diagram file',
     inputSchema: {
       type: 'object',
@@ -426,11 +466,83 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'get_diagrams_path',
+    name: 'bpmn_get_diagrams_path',
     description: 'Get the path where BPMN diagrams are saved',
     inputSchema: {
       type: 'object',
       properties: {}
+    }
+  },
+  {
+    name: 'bpmn_auto_layout',
+    description: 'Apply automatic layout to a process for better visual positioning',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'ID of the process to layout'
+        },
+        algorithm: {
+          type: 'string',
+          enum: ['horizontal', 'vertical'],
+          description: 'Layout algorithm to use',
+          default: 'horizontal'
+        }
+      },
+      required: ['processId']
+    }
+  },
+  {
+    name: 'bpmn_convert_mermaid',
+    description: 'Convert a Mermaid flowchart diagram to BPMN 2.0 format',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mermaidCode: {
+          type: 'string',
+          description: 'Mermaid flowchart code to convert'
+        },
+        processName: {
+          type: 'string',
+          description: 'Name for the BPMN process (optional)',
+          default: 'Converted Process'
+        },
+        saveToFile: {
+          type: 'boolean',
+          description: 'Whether to save the BPMN to a file',
+          default: false
+        },
+        filename: {
+          type: 'string',
+          description: 'Custom filename for saved BPMN (optional)'
+        }
+      },
+      required: ['mermaidCode']
+    }
+  },
+  {
+    name: 'bpmn_import_mermaid',
+    description: 'Import a Mermaid diagram and create an editable BPMN process',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mermaidCode: {
+          type: 'string',
+          description: 'Mermaid flowchart code to import'
+        },
+        processName: {
+          type: 'string',
+          description: 'Name for the BPMN process',
+          default: 'Imported Process'
+        },
+        autoLayout: {
+          type: 'boolean',
+          description: 'Apply automatic layout after import',
+          default: true
+        }
+      },
+      required: ['mermaidCode']
     }
   }
 ];

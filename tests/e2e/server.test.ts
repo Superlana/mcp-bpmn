@@ -86,13 +86,13 @@ describe('MCP Server End-to-End Tests', () => {
     expect(response.result.tools.length).toBeGreaterThan(0);
   });
 
-  it('should handle bpmn_create_process tool call', async () => {
+  it('should handle new_bpmn tool call', async () => {
     const response = await sendRequest({
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/call',
       params: {
-        name: 'bpmn_create_process',
+        name: 'new_bpmn',
         arguments: {
           name: 'E2E Test Process'
         }
@@ -135,7 +135,7 @@ describe('MCP Server End-to-End Tests', () => {
       id: 4,
       method: 'tools/call',
       params: {
-        name: 'bpmn_create_process',
+        name: 'new_bpmn',
         arguments: {
           name: 'Full E2E Test Process'
         }
@@ -151,9 +151,8 @@ describe('MCP Server End-to-End Tests', () => {
         id: 5,
         method: 'tools/call',
         params: {
-          name: 'bpmn_export',
+          name: 'export',
           arguments: {
-            processId: 'Process_1',
             format: 'xml'
           }
         }

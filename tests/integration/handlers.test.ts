@@ -1,5 +1,6 @@
 import { BpmnRequestHandler } from '../../src/server/handlers.js';
 import { IdGenerator } from '../../src/utils/IdGenerator.js';
+import { diagramContext } from '../../src/core/DiagramContext.js';
 
 describe('BpmnRequestHandler Integration Tests', () => {
   let handler: BpmnRequestHandler;
@@ -7,119 +8,93 @@ describe('BpmnRequestHandler Integration Tests', () => {
   beforeEach(() => {
     handler = new BpmnRequestHandler();
     IdGenerator.reset();
+    diagramContext.clear();
   });
 
-  describe('bpmn_create_process', () => {
+  afterEach(() => {
+    diagramContext.clear();
+  });
+
+  describe('new_bpmn', () => {
     it('should create a process successfully', async () => {
-      const result = await handler.handleRequest('bpmn_create_process', {
+      const result = await handler.handleRequest('new_bpmn', {
         name: 'Test Process'
       });
 
       expect(result.isError).toBeUndefined();
       expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('Created process "Test Process" with ID: Process_1');
+      expect(result.content[0].text).toBe('Created new process diagram "Test Process"');
     });
 
     it('should create a collaboration', async () => {
-      const result = await handler.handleRequest('bpmn_create_process', {
+      const result = await handler.handleRequest('new_bpmn', {
         name: 'Test Collaboration',
         type: 'collaboration'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Created collaboration "Test Collaboration"');
+      expect(result.content[0].text).toBe('Created new collaboration diagram "Test Collaboration"');
     });
   });
 
-  describe('bpmn_add_event', () => {
-    let processId: string;
-
+  describe('add_event', () => {
     beforeEach(async () => {
-      await handler.handleRequest('bpmn_create_process', {
+      await handler.handleRequest('new_bpmn', {
         name: 'Event Test Process'
       });
-      // Extract process ID from result
-      processId = 'Process_1';
     });
 
     it('should add a start event', async () => {
-      const result = await handler.handleRequest('bpmn_add_event', {
-        processId,
+      const result = await handler.handleRequest('add_event', {
         eventType: 'start',
         name: 'Start Event'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added start event "Start Event" with ID: StartEvent_1');
+      expect(result.content[0].text).toBe('Added start event "Start Event" with ID: StartEvent_1');
     });
 
     it('should add an end event', async () => {
-      const result = await handler.handleRequest('bpmn_add_event', {
-        processId,
+      const result = await handler.handleRequest('add_event', {
         eventType: 'end',
         name: 'End Event'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added end event "End Event" with ID: EndEvent_1');
+      expect(result.content[0].text).toBe('Added end event "End Event" with ID: EndEvent_1');
     });
 
-    it('should add event with connection', async () => {
-      // First add a start event
-      await handler.handleRequest('bpmn_add_event', {
-        processId,
-        eventType: 'start',
-        name: 'Start'
-      });
-
-      // Then add end event connected to start
-      const result = await handler.handleRequest('bpmn_add_event', {
-        processId,
-        eventType: 'end',
-        name: 'End',
-        connectFrom: 'StartEvent_1'
-      });
-
-      expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added end event "End" with ID: EndEvent_1');
-    });
-
-    it('should handle invalid process ID', async () => {
-      const result = await handler.handleRequest('bpmn_add_event', {
-        processId: 'invalid-id',
+    it('should error when no context', async () => {
+      diagramContext.clear();
+      const result = await handler.handleRequest('add_event', {
         eventType: 'start',
         name: 'Start'
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error: Process invalid-id not found');
+      expect(result.content[0].text).toContain('No current context');
     });
   });
 
-  describe('bpmn_add_activity', () => {
-    let processId: string;
-
+  describe('add_activity', () => {
     beforeEach(async () => {
-      await handler.handleRequest('bpmn_create_process', {
+      await handler.handleRequest('new_bpmn', {
         name: 'Activity Test Process'
       });
-      processId = 'Process_1';
     });
 
     it('should add a task', async () => {
-      const result = await handler.handleRequest('bpmn_add_activity', {
-        processId,
+      const result = await handler.handleRequest('add_activity', {
         activityType: 'task',
         name: 'Simple Task'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added task "Simple Task" with ID: Task_1');
+      expect(result.content[0].text).toBe('Added task "Simple Task" with ID: Task_1');
     });
 
     it('should add a user task with properties', async () => {
-      const result = await handler.handleRequest('bpmn_add_activity', {
-        processId,
+      const result = await handler.handleRequest('add_activity', {
         activityType: 'userTask',
         name: 'Review Document',
         properties: {
@@ -129,112 +104,79 @@ describe('BpmnRequestHandler Integration Tests', () => {
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added userTask "Review Document" with ID: UserTask_1');
-    });
-
-    it('should add activity connected to another element', async () => {
-      // Add start event first
-      await handler.handleRequest('bpmn_add_event', {
-        processId,
-        eventType: 'start',
-        name: 'Start'
-      });
-
-      // Add task connected to start
-      const result = await handler.handleRequest('bpmn_add_activity', {
-        processId,
-        activityType: 'task',
-        name: 'Connected Task',
-        connectFrom: 'StartEvent_1'
-      });
-
-      expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added task "Connected Task" with ID: Task_1');
+      expect(result.content[0].text).toBe('Added userTask "Review Document" with ID: UserTask_1');
     });
   });
 
-  describe('bpmn_add_gateway', () => {
-    let processId: string;
-
+  describe('add_gateway', () => {
     beforeEach(async () => {
-      await handler.handleRequest('bpmn_create_process', {
+      await handler.handleRequest('new_bpmn', {
         name: 'Gateway Test Process'
       });
-      processId = 'Process_1';
     });
 
     it('should add an exclusive gateway', async () => {
-      const result = await handler.handleRequest('bpmn_add_gateway', {
-        processId,
+      const result = await handler.handleRequest('add_gateway', {
         gatewayType: 'exclusive',
         name: 'Decision Point'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added exclusive gateway "Decision Point" with ID: ExclusiveGateway_1');
+      expect(result.content[0].text).toBe('Added exclusive gateway "Decision Point" with ID: ExclusiveGateway_1');
     });
 
     it('should add a parallel gateway', async () => {
-      const result = await handler.handleRequest('bpmn_add_gateway', {
-        processId,
+      const result = await handler.handleRequest('add_gateway', {
         gatewayType: 'parallel',
         name: 'Fork'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Added parallel gateway "Fork" with ID: ParallelGateway_1');
+      expect(result.content[0].text).toBe('Added parallel gateway "Fork" with ID: ParallelGateway_1');
     });
   });
 
-  describe('bpmn_connect', () => {
-    let processId: string;
-
+  describe('connect', () => {
     beforeEach(async () => {
-      await handler.handleRequest('bpmn_create_process', {
+      await handler.handleRequest('new_bpmn', {
         name: 'Connection Test Process'
       });
-      processId = 'Process_1';
 
       // Add elements to connect
-      await handler.handleRequest('bpmn_add_event', {
-        processId,
+      await handler.handleRequest('add_event', {
         eventType: 'start',
         name: 'Start'
       });
 
-      await handler.handleRequest('bpmn_add_activity', {
-        processId,
+      await handler.handleRequest('add_activity', {
         activityType: 'task',
         name: 'Task'
       });
     });
 
     it('should connect two elements', async () => {
-      const result = await handler.handleRequest('bpmn_connect', {
-        processId,
+      const result = await handler.handleRequest('connect', {
         sourceId: 'StartEvent_1',
         targetId: 'Task_1'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Connected StartEvent_1 to Task_1');
+      expect(result.content[0].text).toBe('Connected StartEvent_1 to Task_1');
     });
 
     it('should connect with label', async () => {
-      const result = await handler.handleRequest('bpmn_connect', {
-        processId,
+      const result = await handler.handleRequest('connect', {
         sourceId: 'StartEvent_1',
         targetId: 'Task_1',
         label: 'Start Flow'
       });
 
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('Connected StartEvent_1 to Task_1 with label "Start Flow"');
+      expect(result.content[0].text).toBe('Connected StartEvent_1 to Task_1 with label "Start Flow"');
     });
 
     it('should handle invalid element IDs', async () => {
-      const result = await handler.handleRequest('bpmn_connect', {
-        processId,
+      const result = await handler.handleRequest('connect', {
         sourceId: 'invalid-source',
         targetId: 'invalid-target'
       });
@@ -244,33 +186,31 @@ describe('BpmnRequestHandler Integration Tests', () => {
     });
   });
 
-  describe('bpmn_export', () => {
-    let processId: string;
-
+  describe('export', () => {
     beforeEach(async () => {
-      await handler.handleRequest('bpmn_create_process', {
+      await handler.handleRequest('new_bpmn', {
         name: 'Export Test Process'
       });
-      processId = 'Process_1';
 
       // Add some elements
-      await handler.handleRequest('bpmn_add_event', {
-        processId,
+      await handler.handleRequest('add_event', {
         eventType: 'start',
         name: 'Start'
       });
 
-      await handler.handleRequest('bpmn_add_activity', {
-        processId,
+      await handler.handleRequest('add_activity', {
         activityType: 'task',
-        name: 'Do Work',
-        connectFrom: 'StartEvent_1'
+        name: 'Do Work'
+      });
+      
+      await handler.handleRequest('connect', {
+        sourceId: 'StartEvent_1',
+        targetId: 'Task_1'
       });
     });
 
     it('should export as XML', async () => {
-      const result = await handler.handleRequest('bpmn_export', {
-        processId,
+      const result = await handler.handleRequest('export', {
         format: 'xml'
       });
 
@@ -284,8 +224,7 @@ describe('BpmnRequestHandler Integration Tests', () => {
     });
 
     it('should export as SVG', async () => {
-      const result = await handler.handleRequest('bpmn_export', {
-        processId,
+      const result = await handler.handleRequest('export', {
         format: 'svg'
       });
 
@@ -295,20 +234,15 @@ describe('BpmnRequestHandler Integration Tests', () => {
     });
   });
 
-  describe('bpmn_validate', () => {
-    let processId: string;
-
+  describe('validate', () => {
     beforeEach(async () => {
-      await handler.handleRequest('bpmn_create_process', {
+      await handler.handleRequest('new_bpmn', {
         name: 'Validation Test Process'
       });
-      processId = 'Process_1';
     });
 
     it('should validate empty process', async () => {
-      const result = await handler.handleRequest('bpmn_validate', {
-        processId
-      });
+      const result = await handler.handleRequest('validate', {});
 
       expect(result.isError).toBeUndefined();
       const validation = JSON.parse(result.content[0].text as string);
@@ -318,22 +252,22 @@ describe('BpmnRequestHandler Integration Tests', () => {
 
     it('should validate complete process', async () => {
       // Add start and end events
-      await handler.handleRequest('bpmn_add_event', {
-        processId,
+      await handler.handleRequest('add_event', {
         eventType: 'start',
         name: 'Start'
       });
 
-      await handler.handleRequest('bpmn_add_event', {
-        processId,
+      await handler.handleRequest('add_event', {
         eventType: 'end',
-        name: 'End',
-        connectFrom: 'StartEvent_1'
+        name: 'End'
+      });
+      
+      await handler.handleRequest('connect', {
+        sourceId: 'StartEvent_1',
+        targetId: 'EndEvent_1'
       });
 
-      const result = await handler.handleRequest('bpmn_validate', {
-        processId
-      });
+      const result = await handler.handleRequest('validate', {});
 
       expect(result.isError).toBeUndefined();
       const validation = JSON.parse(result.content[0].text as string);
