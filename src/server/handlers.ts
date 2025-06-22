@@ -1,12 +1,18 @@
 import { SimpleBpmnEngine } from '../core/SimpleBpmnEngine.js';
 import { TypeMappings } from '../utils/TypeMappings.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { MermaidConverter } from '../converters/MermaidConverter.js';
+import { FileManager } from '../utils/FileManager.js';
 
 export class BpmnRequestHandler {
   private engine: SimpleBpmnEngine;
+  private mermaidConverter: MermaidConverter;
+  private fileManager: FileManager;
 
   constructor() {
     this.engine = new SimpleBpmnEngine();
+    this.mermaidConverter = new MermaidConverter();
+    this.fileManager = new FileManager();
   }
 
   async handleRequest(name: string, args: any): Promise<CallToolResult> {
@@ -50,6 +56,10 @@ export class BpmnRequestHandler {
           return await this.getDiagramsPath();
         case 'bpmn_auto_layout':
           return await this.autoLayout(args);
+        case 'bpmn_convert_mermaid':
+          return await this.convertMermaid(args);
+        case 'bpmn_import_mermaid':
+          return await this.importMermaid(args);
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -517,5 +527,87 @@ export class BpmnRequestHandler {
         }
       ]
     };
+  }
+
+  private async convertMermaid(args: any): Promise<CallToolResult> {
+    const { mermaidCode, processName = 'Converted Process', saveToFile = false, filename } = args;
+    
+    try {
+      // Convert Mermaid to BPMN XML
+      const conversionResult = await this.mermaidConverter.convert(mermaidCode);
+      
+      let savedInfo = '';
+      if (saveToFile) {
+        // Save the file
+        const finalFilename = filename || `${processName.replace(/[^a-zA-Z0-9-_]/g, '_')}_${new Date().toISOString().split('T')[0]}.bpmn`;
+        const saveResult = await this.fileManager.saveBpmnFile(conversionResult.xml, {
+          filename: finalFilename
+        });
+        if (!saveResult.success) {
+          throw new Error(saveResult.error || 'Failed to save file');
+        }
+        const filePath = saveResult.filePath;
+        savedInfo = `\n\nSaved to: ${filePath}`;
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully converted Mermaid diagram to BPMN 2.0\n\nProcess: ${processName}\nElements: ${conversionResult.stats.nodeCount} nodes, ${conversionResult.stats.edgeCount} flows\nConfidence: ${Math.round(conversionResult.confidence * 100)}%${savedInfo}\n\n${conversionResult.xml}`
+          }
+        ]
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to convert Mermaid diagram: ${error.message}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+
+  private async importMermaid(args: any): Promise<CallToolResult> {
+    const { mermaidCode, processName = 'Imported Process', autoLayout = true } = args;
+    
+    try {
+      // Convert Mermaid to BPMN XML
+      const conversionResult = await this.mermaidConverter.convert(mermaidCode);
+      
+      // Import the XML into the engine to create an editable process
+      const context = await this.engine.importXml(conversionResult.xml);
+      
+      // Apply auto-layout if requested
+      if (autoLayout) {
+        await this.engine.applyAutoLayout(context.id, 'horizontal');
+      }
+      
+      // Save the imported process
+      const filename = `${context.id}_${processName.replace(/[^a-zA-Z0-9-_]/g, '_')}.bpmn`;
+      const path = this.engine.getDiagramsPath();
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully imported Mermaid diagram as BPMN process\n\nProcess ID: ${context.id}\nProcess Name: ${processName}\nElements: ${context.elements.size} nodes, ${context.connections.size} flows\nAuto-layout: ${autoLayout ? 'Applied' : 'Skipped'}\n\nSaved to: ${path}/${filename}\n\nYou can now edit this process using the BPMN tools.`
+          }
+        ]
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to import Mermaid diagram: ${error.message}`
+          }
+        ],
+        isError: true
+      };
+    }
   }
 }

@@ -9,6 +9,7 @@ MCP-BPMN provides a standardized interface for AI assistants to work with busine
 ### Key Features
 
 - ✅ **Complete BPMN 2.0 Support**: Events, activities, gateways, pools, and sequences
+- ✅ **Mermaid to BPMN Conversion**: Bootstrap BPMN diagrams from Mermaid flowcharts
 - ✅ **Smart Auto-Layout**: Automatic positioning with branch handling for gateways
 - ✅ **File Persistence**: Save diagrams locally for editing in visual tools
 - ✅ **Proper Visual Rendering**: Accurate waypoint calculation for connections
@@ -164,7 +165,34 @@ Export the process as BPMN 2.0 XML.
 - `bpmn_update_element` - Update element properties
 - `bpmn_delete_element` - Delete an element
 
-## 💡 Example: Creating an Approval Process
+### Mermaid Conversion Tools
+
+#### `bpmn_convert_mermaid`
+Convert a Mermaid flowchart to BPMN 2.0 format.
+
+```javascript
+{
+  mermaidCode: "graph TD\n  A[Start] --> B{Decision}\n  B -->|Yes| C[Process]\n  B -->|No| D[End]",
+  processName: "My Process",
+  saveToFile: true,
+  filename: "converted-process.bpmn"
+}
+```
+
+#### `bpmn_import_mermaid`
+Import a Mermaid diagram as an editable BPMN process.
+
+```javascript
+{
+  mermaidCode: "graph TD\n  A[Start] --> B[Task] --> C[End]",
+  processName: "Imported Process",
+  autoLayout: true
+}
+```
+
+## 💡 Examples
+
+### Example 1: Creating an Approval Process from Scratch
 
 ```javascript
 // Step 1: Create the process
@@ -191,6 +219,38 @@ await bpmn_auto_layout({ processId });
 
 // Step 5: Export the diagram
 const xml = await bpmn_export({ processId });
+```
+
+### Example 2: Bootstrap from Mermaid (Recommended for Lower Token Usage)
+
+```javascript
+// Step 1: Define process in Mermaid syntax (much more concise!)
+const mermaidCode = `
+graph TD
+  A((Request Received)) --> B[Review Request]
+  B --> C{Approved?}
+  C -->|Yes| D[Process Approval]
+  C -->|No| E[Handle Rejection]
+  D --> F((Complete))
+  E --> F
+`;
+
+// Step 2: Import as editable BPMN process
+const result = await bpmn_import_mermaid({ 
+  mermaidCode, 
+  processName: "Approval Workflow",
+  autoLayout: true 
+});
+
+// Step 3: Make additional edits if needed
+await bpmn_update_element({ 
+  processId: result.processId, 
+  elementId: "UserTask_1", 
+  properties: { assignee: "reviewer" }
+});
+
+// Step 4: Export the final diagram
+const xml = await bpmn_export({ processId: result.processId });
 ```
 
 ## 🗂️ File Storage

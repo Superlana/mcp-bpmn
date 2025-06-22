@@ -430,5 +430,57 @@ export const tools: Tool[] = [
       },
       required: ['processId']
     }
+  },
+  {
+    name: 'bpmn_convert_mermaid',
+    description: 'Convert a Mermaid flowchart diagram to BPMN 2.0 format',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mermaidCode: {
+          type: 'string',
+          description: 'Mermaid flowchart code to convert'
+        },
+        processName: {
+          type: 'string',
+          description: 'Name for the BPMN process (optional)',
+          default: 'Converted Process'
+        },
+        saveToFile: {
+          type: 'boolean',
+          description: 'Whether to save the BPMN to a file',
+          default: false
+        },
+        filename: {
+          type: 'string',
+          description: 'Custom filename for saved BPMN (optional)'
+        }
+      },
+      required: ['mermaidCode']
+    }
+  },
+  {
+    name: 'bpmn_import_mermaid',
+    description: 'Import a Mermaid diagram and create an editable BPMN process',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mermaidCode: {
+          type: 'string',
+          description: 'Mermaid flowchart code to import'
+        },
+        processName: {
+          type: 'string',
+          description: 'Name for the BPMN process',
+          default: 'Imported Process'
+        },
+        autoLayout: {
+          type: 'boolean',
+          description: 'Apply automatic layout after import',
+          default: true
+        }
+      },
+      required: ['mermaidCode']
+    }
   }
 ];

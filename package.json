@@ -1,7 +1,7 @@
 {
   "name": "mcp-bpmn-server",
-  "version": "0.1.0",
-  "description": "MCP server for AI-powered BPMN diagram creation using bpmn-js",
+  "version": "0.2.0",
+  "description": "MCP server for AI-powered BPMN diagram creation with Mermaid-to-BPMN conversion",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -36,7 +36,9 @@
     "bpmn-moddle": "^9.0.1",
     "diagram-js": "^14.10.0",
     "jsdom": "^24.1.0",
-    "uuid": "^10.0.0"
+    "mermaid": "^11.3.0",
+    "uuid": "^10.0.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/jest": "^29.5.13",

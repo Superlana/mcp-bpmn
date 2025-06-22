@@ -31,6 +31,7 @@ export default {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
+    '/mermaid-2-bpmn/',
   ],
   collectCoverageFrom: [
     'src/**/*.ts',

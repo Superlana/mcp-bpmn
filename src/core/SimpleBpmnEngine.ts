@@ -291,6 +291,43 @@ ${diagramXml}    </bpmndi:BPMNPlane>
       xml
     };
 
+    // Parse elements from XML (basic parsing for now)
+    const elementRegex = /<bpmn:(\w+)[^>]+id="([^"]+)"[^>]*(?:name="([^"]+)")?[^>]*>/g;
+    let elementMatch;
+    while ((elementMatch = elementRegex.exec(xml)) !== null) {
+      const [, elementType, elementId, elementName] = elementMatch;
+      if (elementType !== 'process' && elementType !== 'definitions' && 
+          elementType !== 'sequenceFlow' && !elementType.includes('Diagram')) {
+        
+        // Capitalize first letter for proper BPMN type
+        const bpmnType = `bpmn:${elementType.charAt(0).toUpperCase() + elementType.slice(1)}`;
+        const sizing = this.getElementSizing(bpmnType);
+        
+        context.elements.set(elementId, {
+          id: elementId,
+          type: bpmnType,
+          name: elementName || '',
+          position: { x: 100, y: 100 }, // Default position
+          width: sizing.width,
+          height: sizing.height,
+          properties: {}
+        });
+      }
+    }
+    
+    // Parse sequence flows
+    const flowRegex = /<bpmn:sequenceFlow[^>]+id="([^"]+)"[^>]+sourceRef="([^"]+)"[^>]+targetRef="([^"]+)"[^>]*>/g;
+    let flowMatch;
+    while ((flowMatch = flowRegex.exec(xml)) !== null) {
+      const [, flowId, sourceRef, targetRef] = flowMatch;
+      context.connections.set(flowId, {
+        id: flowId,
+        type: 'bpmn:SequenceFlow',
+        source: sourceRef,
+        target: targetRef
+      });
+    }
+
     this.processes.set(processId, context);
     await this.saveProcess(context);
     
@@ -391,6 +428,7 @@ ${diagramXml}    </bpmndi:BPMNPlane>
     process.xml = this.generateXmlWithElements(process);
     await this.saveProcess(process);
   }
+
 
   /**
    * Clear all processes

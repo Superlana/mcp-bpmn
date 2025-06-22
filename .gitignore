@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-
+mermaid-2-bpmn/
 # Build output
 dist/
 *.tsbuildinfo
