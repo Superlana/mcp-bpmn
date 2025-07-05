@@ -1,0 +1,51 @@
+flowchart TD
+    Start([Customer Places Order]) --> A[Sales Order<br/>Creation]
+    A --> B{Credit Check<br/>Required?}
+    B -->|Yes| C[Perform Credit<br/>Evaluation]
+    B -->|No| D[Order<br/>Confirmation]
+    C --> E{Credit<br/>Approved?}
+    E -->|Yes| D
+    E -->|No| F[Order On Hold<br/>or Rejected]
+    F --> G[Notify Customer<br/>of Issue]
+    G --> End1([End])
+    
+    D --> H[Inventory<br/>Availability Check]
+    H --> I{Stock<br/>Available?}
+    I -->|Yes| J[Allocate<br/>Inventory]
+    I -->|No| K[Backorder<br/>Management]
+    K --> L[Production/<br/>Procurement]
+    L --> J
+    
+    J --> M[Pick & Pack<br/>Order]
+    M --> N[Quality<br/>Check]
+    N --> O[Shipping &<br/>Delivery]
+    O --> P[Generate<br/>Invoice]
+    P --> Q[Send Invoice<br/>to Customer]
+    
+    Q --> R[Payment<br/>Terms Period]
+    R --> S{Payment<br/>Received?}
+    S -->|Yes| T[Record Payment<br/>in System]
+    S -->|No| U[Send Payment<br/>Reminder]
+    U --> V{Payment<br/>Received?}
+    V -->|Yes| T
+    V -->|No| W[Collections<br/>Process]
+    W --> X{Payment<br/>Collected?}
+    X -->|Yes| T
+    X -->|No| Y[Bad Debt<br/>Write-off]
+    
+    T --> Z[Bank<br/>Reconciliation]
+    Z --> AA[Update Customer<br/>Account]
+    AA --> AB[Close Order<br/>in System]
+    AB --> End2([End])
+    Y --> End3([End])
+    
+    style Start fill:#90EE90
+    style End1 fill:#FFB6C1
+    style End2 fill:#90EE90
+    style End3 fill:#FFB6C1
+    style B fill:#FFE4B5
+    style E fill:#FFE4B5
+    style I fill:#FFE4B5
+    style S fill:#FFE4B5
+    style V fill:#FFE4B5
+    style X fill:#FFE4B5

@@ -384,22 +384,43 @@ export class MermaidParser {
 
   private inferNodeTypes(ast: MermaidAST): void {
     for (const node of ast.nodes) {
-      // Skip if already has a specific type other than 'terminator'
+      // Skip if already has a specific type other than 'terminator' and 'process'
       if (node.type !== 'terminator' && node.type !== 'process') continue;
       
-      if (node.label.toLowerCase().includes('start') || node.label.toLowerCase().includes('begin')) {
+      const incomingEdges = ast.edges.filter(e => e.target === node.id);
+      const outgoingEdges = ast.edges.filter(e => e.source === node.id);
+      
+      // Check for explicit start/end keywords in labels (must be whole words)
+      const lowerLabel = node.label.toLowerCase();
+      if (/\b(start|begin)\b/.test(lowerLabel)) {
         node.type = 'start';
-      } else if (node.label.toLowerCase().includes('end') || node.label.toLowerCase().includes('stop')) {
+      } else if (/\b(end|stop|finish|complete)\b/.test(lowerLabel) || /^end\d*$/i.test(node.id)) {
         node.type = 'end';
-      } else if (node.type === 'terminator') {
-        const incomingEdges = ast.edges.filter(e => e.target === node.id);
-        const outgoingEdges = ast.edges.filter(e => e.source === node.id);
-        
+      } 
+      // Only classify as start/end based on connections if the node type is 'terminator'
+      // AND it truly has no incoming or no outgoing edges
+      else if (node.type === 'terminator') {
         if (incomingEdges.length === 0 && outgoingEdges.length > 0) {
           node.type = 'start';
         } else if (outgoingEdges.length === 0 && incomingEdges.length > 0) {
           node.type = 'end';
+        } else {
+          // If terminator has both incoming and outgoing, treat as process
+          node.type = 'process';
         }
+      }
+      // For nodes that were initially parsed as 'process', keep them as process
+      // unless they match specific start/end criteria
+      else if (node.type === 'process') {
+        // Only change process nodes to start/end if they clearly match the pattern
+        if (incomingEdges.length === 0 && outgoingEdges.length > 0 && 
+            /\b(start|begin)\b/.test(lowerLabel)) {
+          node.type = 'start';
+        } else if (outgoingEdges.length === 0 && incomingEdges.length > 0 && 
+                   /\b(end|stop|finish|complete)\b/.test(lowerLabel)) {
+          node.type = 'end';
+        }
+        // Otherwise, keep as process
       }
     }
   }

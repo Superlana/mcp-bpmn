@@ -17,6 +17,9 @@
     "test:e2e": "npm run build && jest tests/e2e",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:conversion": "npx tsx test-conversion.ts",
+    "test:conversion:full": "bash run-conversion-test.sh",
+    "test:mermaid": "jest tests/integration/mermaid-conversion.test.ts",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist"
