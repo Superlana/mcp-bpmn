@@ -234,12 +234,14 @@ export class SimpleBpmnGenerator {
       </bpmndi:BPMNShape>\n`;
     });
     
-    flows.forEach(flow => {
+    flows.forEach((flow) => {
       const sourceElement = elements.find(e => e.id === flow.source);
       const targetElement = elements.find(e => e.id === flow.target);
       
       if (sourceElement && targetElement) {
-        const waypoints = this.calculateWaypoints(sourceElement, targetElement);
+        // Get gateway outgoing flows info for special diamond attachment logic
+        const gatewayFlowInfo = this.getGatewayFlowInfo(flow, flows);
+        const waypoints = this.calculateWaypoints(sourceElement, targetElement, gatewayFlowInfo);
         diagramElements += `      <bpmndi:BPMNEdge id="${flow.id}_di" bpmnElement="${flow.id}">
 ${waypoints}      </bpmndi:BPMNEdge>\n`;
       } else {
@@ -268,16 +270,92 @@ ${diagramElements}    </bpmndi:BPMNPlane>
 </bpmn:definitions>`;
   }
   
-  private calculateWaypoints(sourceElement: any, targetElement: any): string {
-    // Calculate center points of source and target elements
-    const sourceX = (sourceElement.x || 0) + (sourceElement.type.includes('Gateway') ? 25 : sourceElement.type.includes('Event') ? 18 : 50);
-    const sourceY = (sourceElement.y || 0) + (sourceElement.type.includes('Gateway') ? 25 : sourceElement.type.includes('Event') ? 18 : 40);
+  private getGatewayFlowInfo(currentFlow: any, allFlows: any[]): { 
+    isFromGateway: boolean; 
+    totalOutgoingFlows: number; 
+    currentFlowIndex: number;
+    flowLabels: string[];
+  } {
+    const sourceId = currentFlow.source;
     
-    const targetX = (targetElement.x || 0) + (targetElement.type.includes('Gateway') ? 25 : targetElement.type.includes('Event') ? 18 : 50);
-    const targetY = (targetElement.y || 0) + (targetElement.type.includes('Gateway') ? 25 : targetElement.type.includes('Event') ? 18 : 40);
+    // Find all outgoing flows from the same source
+    const outgoingFlows = allFlows.filter(flow => flow.source === sourceId);
+    const isFromGateway = sourceId.includes('Gateway');
+    
+    if (!isFromGateway) {
+      return {
+        isFromGateway: false,
+        totalOutgoingFlows: outgoingFlows.length,
+        currentFlowIndex: 0,
+        flowLabels: []
+      };
+    }
+    
+    // Sort flows to ensure consistent ordering (by label if available, then by target)
+    const sortedFlows = outgoingFlows.sort((a, b) => {
+      // Prioritize "No" flows to go left, "Yes" flows to go right
+      if (a.label && b.label) {
+        if (a.label.toLowerCase() === 'no' && b.label.toLowerCase() === 'yes') return -1;
+        if (a.label.toLowerCase() === 'yes' && b.label.toLowerCase() === 'no') return 1;
+        return a.label.localeCompare(b.label);
+      }
+      return a.target.localeCompare(b.target);
+    });
+    
+    const currentFlowIndex = sortedFlows.findIndex(flow => 
+      flow.source === currentFlow.source && flow.target === currentFlow.target
+    );
+    
+    return {
+      isFromGateway: true,
+      totalOutgoingFlows: outgoingFlows.length,
+      currentFlowIndex: currentFlowIndex,
+      flowLabels: sortedFlows.map(flow => flow.label || '')
+    };
+  }
+
+  private calculateWaypoints(sourceElement: any, targetElement: any, gatewayFlowInfo?: {
+    isFromGateway: boolean;
+    totalOutgoingFlows: number;
+    currentFlowIndex: number;
+    flowLabels: string[];
+  }): string {
+    // Get element dimensions
+    const sourceWidth = sourceElement.type.includes('Gateway') ? 50 : sourceElement.type.includes('Event') ? 36 : 100;
+    const sourceHeight = sourceElement.type.includes('Gateway') ? 50 : sourceElement.type.includes('Event') ? 36 : 80;
+    const targetWidth = targetElement.type.includes('Gateway') ? 50 : targetElement.type.includes('Event') ? 36 : 100;
+    const targetHeight = targetElement.type.includes('Gateway') ? 50 : targetElement.type.includes('Event') ? 36 : 80;
+    
+    // Calculate bounding boxes
+    const sourceBox = {
+      x: sourceElement.x || 0,
+      y: sourceElement.y || 0,
+      width: sourceWidth,
+      height: sourceHeight,
+      centerX: (sourceElement.x || 0) + sourceWidth / 2,
+      centerY: (sourceElement.y || 0) + sourceHeight / 2
+    };
+    
+    const targetBox = {
+      x: targetElement.x || 0,
+      y: targetElement.y || 0,
+      width: targetWidth,
+      height: targetHeight,
+      centerX: (targetElement.x || 0) + targetWidth / 2,
+      centerY: (targetElement.y || 0) + targetHeight / 2
+    };
+    
+    // Calculate edge connection points with special diamond logic
+    const sourceConnection = this.calculateEdgeConnectionPoint(sourceBox, targetBox.centerX, targetBox.centerY, true, gatewayFlowInfo);
+    const targetConnection = this.calculateEdgeConnectionPoint(targetBox, sourceBox.centerX, sourceBox.centerY, false);
+    
+    const sourceX = sourceConnection.sourceX!;
+    const sourceY = sourceConnection.sourceY!;
+    const targetX = targetConnection.targetX!;
+    const targetY = targetConnection.targetY!;
     
     // Check if this is a loop back (target is before source)
-    const isLoopBack = targetX < sourceX - 100;
+    const isLoopBack = targetBox.centerX < sourceBox.centerX - 100;
     
     if (isLoopBack) {
       // Create a curved path for loops
@@ -293,6 +371,125 @@ ${diagramElements}    </bpmndi:BPMNPlane>
     return `        <di:waypoint x="${sourceX}" y="${sourceY}" />
         <di:waypoint x="${targetX}" y="${targetY}" />
 `;
+  }
+  
+  private calculateEdgeConnectionPoint(
+    elementBox: { x: number; y: number; width: number; height: number; centerX: number; centerY: number },
+    targetCenterX: number,
+    targetCenterY: number,
+    isSource: boolean,
+    gatewayFlowInfo?: {
+      isFromGateway: boolean;
+      totalOutgoingFlows: number;
+      currentFlowIndex: number;
+      flowLabels: string[];
+    }
+  ): { sourceX: number; sourceY: number; targetX: number; targetY: number } {
+    // Special logic for diamond gateways as source
+    if (isSource && gatewayFlowInfo?.isFromGateway && elementBox.width === 50 && elementBox.height === 50) {
+      let connectionX: number;
+      let connectionY: number;
+      
+      const { totalOutgoingFlows, currentFlowIndex } = gatewayFlowInfo;
+      
+      if (totalOutgoingFlows === 1) {
+        // 1 arrow: bottom point
+        connectionX = elementBox.centerX;
+        connectionY = elementBox.y + elementBox.height;
+      } else if (totalOutgoingFlows === 2) {
+        // 2 arrows: left and right points
+        if (currentFlowIndex === 0) {
+          // Left point
+          connectionX = elementBox.x;
+          connectionY = elementBox.centerY;
+        } else {
+          // Right point
+          connectionX = elementBox.x + elementBox.width;
+          connectionY = elementBox.centerY;
+        }
+      } else if (totalOutgoingFlows === 3) {
+        // 3 arrows: bottom, left, right points
+        if (currentFlowIndex === 0) {
+          // Bottom point
+          connectionX = elementBox.centerX;
+          connectionY = elementBox.y + elementBox.height;
+        } else if (currentFlowIndex === 1) {
+          // Left point
+          connectionX = elementBox.x;
+          connectionY = elementBox.centerY;
+        } else {
+          // Right point
+          connectionX = elementBox.x + elementBox.width;
+          connectionY = elementBox.centerY;
+        }
+      } else {
+        // More than 3 arrows: fall back to normal calculation
+        return this.calculateNormalEdgeConnection(elementBox, targetCenterX, targetCenterY, isSource);
+      }
+      
+      return {
+        sourceX: Math.round(connectionX),
+        sourceY: Math.round(connectionY),
+        targetX: 0,
+        targetY: 0
+      };
+    }
+    
+    // Normal edge calculation for non-gateway elements or target elements
+    return this.calculateNormalEdgeConnection(elementBox, targetCenterX, targetCenterY, isSource);
+  }
+  
+  private calculateNormalEdgeConnection(
+    elementBox: { x: number; y: number; width: number; height: number; centerX: number; centerY: number },
+    targetCenterX: number,
+    targetCenterY: number,
+    isSource: boolean
+  ): { sourceX: number; sourceY: number; targetX: number; targetY: number } {
+    const dx = targetCenterX - elementBox.centerX;
+    const dy = targetCenterY - elementBox.centerY;
+    
+    // Calculate which edge the line intersects with
+    const xRatio = Math.abs(dx) / (elementBox.width / 2);
+    const yRatio = Math.abs(dy) / (elementBox.height / 2);
+    
+    let connectionX, connectionY;
+    
+    if (xRatio > yRatio) {
+      // Connection is on left or right edge
+      if (dx > 0) {
+        // Right edge
+        connectionX = elementBox.x + elementBox.width;
+        connectionY = elementBox.centerY + (dy * elementBox.width / 2) / Math.abs(dx);
+      } else {
+        // Left edge
+        connectionX = elementBox.x;
+        connectionY = elementBox.centerY + (dy * elementBox.width / 2) / Math.abs(dx);
+      }
+    } else {
+      // Connection is on top or bottom edge
+      if (dy > 0) {
+        // Bottom edge
+        connectionX = elementBox.centerX + (dx * elementBox.height / 2) / Math.abs(dy);
+        connectionY = elementBox.y + elementBox.height;
+      } else {
+        // Top edge
+        connectionX = elementBox.centerX + (dx * elementBox.height / 2) / Math.abs(dy);
+        connectionY = elementBox.y;
+      }
+    }
+    
+    // Ensure connection point is within element bounds
+    connectionX = Math.max(elementBox.x, Math.min(elementBox.x + elementBox.width, connectionX));
+    connectionY = Math.max(elementBox.y, Math.min(elementBox.y + elementBox.height, connectionY));
+    
+    const roundedX = Math.round(connectionX);
+    const roundedY = Math.round(connectionY);
+    
+    if (isSource) {
+      return { sourceX: roundedX, sourceY: roundedY, targetX: 0, targetY: 0 };
+    } else {
+      return { sourceX: 0, sourceY: 0, targetX: roundedX, targetY: roundedY };
+    }
   }
 
   private escapeXml(str: string): string {
