@@ -77,7 +77,7 @@ export class SimpleBpmnGenerator {
     }
     
     // Generate XML
-    const xml = this.generateXml(processId, processName, elements, flows, nodeIdMap, cleanedNodes, ast.subgraphs);
+    const xml = this.generateXml(processId, processName, elements, flows, nodeIdMap, cleanedNodes, ast.subgraphs, layout);
     
     // Calculate statistics
     const statistics = {
@@ -161,7 +161,8 @@ export class SimpleBpmnGenerator {
     flows: ConversionResult['flows'],
     nodeIdMap: Map<string, string>,
     cleanedNodes: MermaidNode[],
-    subgraphs: MermaidAST['subgraphs'] = []
+    subgraphs: MermaidAST['subgraphs'] = [],
+    layout?: LayoutResult
   ): string {
     const nodesByBpmnId = new Map<string, MermaidNode>();
     cleanedNodes.forEach(node => {
@@ -239,9 +240,21 @@ export class SimpleBpmnGenerator {
       const targetElement = elements.find(e => e.id === flow.target);
       
       if (sourceElement && targetElement) {
-        // Get gateway outgoing flows info for special diamond attachment logic
-        const gatewayFlowInfo = this.getGatewayFlowInfo(flow, flows);
-        const waypoints = this.calculateWaypoints(sourceElement, targetElement, gatewayFlowInfo);
+        // Check if we have ELK edge routing information
+        const elkEdge = (layout as any)?.edges?.find((e: any) => 
+          (e.source === flow.source && e.target === flow.target) ||
+          (e.id === flow.id)
+        );
+        
+        let waypoints: string;
+        if (elkEdge && elkEdge.sections && elkEdge.sections.length > 0) {
+          waypoints = this.generateElkWaypoints(elkEdge);
+        } else {
+          // Fallback to original waypoint calculation
+          const gatewayFlowInfo = this.getGatewayFlowInfo(flow, flows);
+          waypoints = this.calculateWaypoints(sourceElement, targetElement, gatewayFlowInfo);
+        }
+        
         diagramElements += `      <bpmndi:BPMNEdge id="${flow.id}_di" bpmnElement="${flow.id}">
 ${waypoints}      </bpmndi:BPMNEdge>\n`;
       } else {
@@ -270,6 +283,30 @@ ${diagramElements}    </bpmndi:BPMNPlane>
 </bpmn:definitions>`;
   }
   
+  private generateElkWaypoints(elkEdge: any): string {
+    // Generate waypoints from ELK edge routing information with enhanced bend points
+    let waypoints = '';
+    
+    elkEdge.sections.forEach((section: any, sectionIndex: number) => {
+      // For first section, add start point
+      if (sectionIndex === 0) {
+        waypoints += `        <di:waypoint x="${Math.round(section.startPoint.x)}" y="${Math.round(section.startPoint.y)}" />\n`;
+      }
+      
+      // Add bend points if any - these create nice orthogonal routing
+      if (section.bendPoints && section.bendPoints.length > 0) {
+        section.bendPoints.forEach((bendPoint: any) => {
+          waypoints += `        <di:waypoint x="${Math.round(bendPoint.x)}" y="${Math.round(bendPoint.y)}" />\n`;
+        });
+      }
+      
+      // Add end point for this section
+      waypoints += `        <di:waypoint x="${Math.round(section.endPoint.x)}" y="${Math.round(section.endPoint.y)}" />\n`;
+    });
+    
+    return waypoints;
+  }
+
   private getGatewayFlowInfo(currentFlow: any, allFlows: any[]): { 
     isFromGateway: boolean; 
     totalOutgoingFlows: number; 
@@ -393,32 +430,32 @@ ${diagramElements}    </bpmndi:BPMNPlane>
       const { totalOutgoingFlows, currentFlowIndex } = gatewayFlowInfo;
       
       if (totalOutgoingFlows === 1) {
-        // 1 arrow: bottom point
+        // 1 arrow: bottom point (exact middle of diamond bottom edge)
         connectionX = elementBox.centerX;
         connectionY = elementBox.y + elementBox.height;
       } else if (totalOutgoingFlows === 2) {
-        // 2 arrows: left and right points
+        // 2 arrows: left and right points (exact middle of diamond sides)
         if (currentFlowIndex === 0) {
-          // Left point
+          // Left point - exact middle of left edge
           connectionX = elementBox.x;
           connectionY = elementBox.centerY;
         } else {
-          // Right point
+          // Right point - exact middle of right edge
           connectionX = elementBox.x + elementBox.width;
           connectionY = elementBox.centerY;
         }
       } else if (totalOutgoingFlows === 3) {
-        // 3 arrows: bottom, left, right points
+        // 3 arrows: bottom, left, right points (exact middle of edges)
         if (currentFlowIndex === 0) {
-          // Bottom point
+          // Bottom point - exact middle of bottom edge
           connectionX = elementBox.centerX;
           connectionY = elementBox.y + elementBox.height;
         } else if (currentFlowIndex === 1) {
-          // Left point
+          // Left point - exact middle of left edge
           connectionX = elementBox.x;
           connectionY = elementBox.centerY;
         } else {
-          // Right point
+          // Right point - exact middle of right edge
           connectionX = elementBox.x + elementBox.width;
           connectionY = elementBox.centerY;
         }
@@ -455,32 +492,28 @@ ${diagramElements}    </bpmndi:BPMNPlane>
     let connectionX, connectionY;
     
     if (xRatio > yRatio) {
-      // Connection is on left or right edge
+      // Connection is on left or right edge - connect at middle of edge
       if (dx > 0) {
-        // Right edge
+        // Right edge - exact middle
         connectionX = elementBox.x + elementBox.width;
-        connectionY = elementBox.centerY + (dy * elementBox.width / 2) / Math.abs(dx);
+        connectionY = elementBox.centerY;
       } else {
-        // Left edge
+        // Left edge - exact middle
         connectionX = elementBox.x;
-        connectionY = elementBox.centerY + (dy * elementBox.width / 2) / Math.abs(dx);
+        connectionY = elementBox.centerY;
       }
     } else {
-      // Connection is on top or bottom edge
+      // Connection is on top or bottom edge - connect at middle of edge
       if (dy > 0) {
-        // Bottom edge
-        connectionX = elementBox.centerX + (dx * elementBox.height / 2) / Math.abs(dy);
+        // Bottom edge - exact middle
+        connectionX = elementBox.centerX;
         connectionY = elementBox.y + elementBox.height;
       } else {
-        // Top edge
-        connectionX = elementBox.centerX + (dx * elementBox.height / 2) / Math.abs(dy);
+        // Top edge - exact middle
+        connectionX = elementBox.centerX;
         connectionY = elementBox.y;
       }
     }
-    
-    // Ensure connection point is within element bounds
-    connectionX = Math.max(elementBox.x, Math.min(elementBox.x + elementBox.width, connectionX));
-    connectionY = Math.max(elementBox.y, Math.min(elementBox.y + elementBox.height, connectionY));
     
     const roundedX = Math.round(connectionX);
     const roundedY = Math.round(connectionY);

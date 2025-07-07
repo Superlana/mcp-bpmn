@@ -1,6 +1,8 @@
 import { MermaidParser } from './MermaidParser.js';
 import { SimpleBpmnGenerator } from '../core/SimpleBpmnGenerator.js';
 import { LayoutEngine } from '../core/LayoutEngine.js';
+import { ElkLayoutEngine } from '../layout/ElkLayoutEngine.js';
+import { createIntermediateGraph } from '../layout/GraphStructure.js';
 import type { ConversionResult } from './types.js';
 import type { 
   MermaidAST
@@ -11,6 +13,7 @@ export interface ConversionOptions {
   validateOutput?: boolean;
   includeDataObjects?: boolean;
   preview?: boolean;
+  useElkLayout?: boolean; // New option to use ELK layout engine
 }
 
 export interface ValidationResult {
@@ -39,11 +42,13 @@ export class MermaidConverter {
   private parser: MermaidParser;
   private simpleGenerator: SimpleBpmnGenerator;
   private layoutEngine: LayoutEngine;
+  private elkLayoutEngine: ElkLayoutEngine;
 
   constructor() {
     this.parser = new MermaidParser();
     this.simpleGenerator = new SimpleBpmnGenerator();
     this.layoutEngine = new LayoutEngine();
+    this.elkLayoutEngine = new ElkLayoutEngine();
   }
 
   async convert(
@@ -63,12 +68,22 @@ export class MermaidConverter {
     const ast = parseResult.ast;
     const processName = this.generateProcessName(ast);
 
-    // Always use simple generator for direct XML generation
-    const layout = options.autoLayout !== false 
-      ? ast.subgraphs.length > 0 
-        ? this.layoutEngine.layoutWithPools(ast) 
-        : this.layoutEngine.layout(ast)
-      : undefined;
+    // Choose layout engine and generate layout
+    let layout: any = undefined;
+    
+    if (options.autoLayout !== false) {
+      if (options.useElkLayout) {
+        // Use ELK layout engine
+        const intermediateGraph = createIntermediateGraph(ast.nodes, ast.edges);
+        const elkResult = await this.elkLayoutEngine.layout(intermediateGraph);
+        layout = this.convertElkToLayoutResult(elkResult);
+      } else {
+        // Use original layout engine
+        layout = ast.subgraphs.length > 0 
+          ? this.layoutEngine.layoutWithPools(ast) 
+          : this.layoutEngine.layout(ast);
+      }
+    }
     
     const result = this.simpleGenerator.generateBpmn(ast, processName, layout);
     result.warnings.push(...warnings);
@@ -90,6 +105,34 @@ export class MermaidConverter {
     };
     
     return result;
+  }
+
+  private convertElkToLayoutResult(elkResult: any): any {
+    // Convert ELK layout result to the format expected by SimpleBpmnGenerator
+    const nodes = new Map();
+    
+    elkResult.nodes.forEach((node: any) => {
+      nodes.set(node.id, {
+        id: node.id,
+        position: {
+          x: node.x + node.width / 2, // Convert top-left to center
+          y: node.y + node.height / 2
+        },
+        width: node.width,
+        height: node.height
+      });
+    });
+    
+    return {
+      nodes,
+      bounds: {
+        minX: 0,
+        minY: 0,
+        maxX: elkResult.width,
+        maxY: elkResult.height
+      },
+      edges: elkResult.edges // Include edge routing information
+    };
   }
 
   async canConvert(mermaidCode: string): Promise<ValidationResult> {

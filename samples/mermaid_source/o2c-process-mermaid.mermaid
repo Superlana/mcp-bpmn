@@ -1,5 +1,5 @@
 flowchart TD
-    Start([Customer Places Order]) --> A[Sales Order<br/>Creation]
+    Start[Customer Places Order] --> A[Sales Order<br/>Creation]
     A --> B{Credit Check<br/>Required?}
     B -->|Yes| C[Perform Credit<br/>Evaluation]
     B -->|No| D[Order<br/>Confirmation]
